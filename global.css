@@ -1,0 +1,7 @@
+/* src/app/globals.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Potrebbero esserci altre regole CSS qui sotto, generate da shadcn. Lasciale stare. */
