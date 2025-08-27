@@ -119,7 +119,7 @@ export function LoginForm({
                 {error && (
                   <p className="text-sm font-medium text-red-500">{error}</p>
                 )}
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full bg-primary text-white hover:bg-primary/90">
                   Accedi
                 </Button>
               </div>

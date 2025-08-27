@@ -4,7 +4,7 @@ import { GalleryVerticalEnd } from "lucide-react";
 
 export default function SignUpPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen p-4 bg-gray-50">
+    <div className="flex items-center justify-center min-h-screen p-4 bg-background">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center space-y-2 text-center">
           {/* Logo e Nome App */}

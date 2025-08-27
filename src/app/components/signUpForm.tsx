@@ -90,7 +90,7 @@ export function SignUpForm({
           {message && <p className="text-sm font-medium text-green-500">{message}</p>}
         </CardContent>
         <CardFooter className="mt-5 flex flex-col gap-4">
-          <Button type="submit" className="w-full">Registrati</Button>
+          <Button type="submit" className="w-full bg-primary text-white hover:bg-primary/90">Registrati</Button>
           <div className="text-center text-sm">
             Hai già un account?{" "}
             <Link href="/login" className="underline">
