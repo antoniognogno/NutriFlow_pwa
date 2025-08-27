@@ -14,7 +14,12 @@ const links = [
   { name: 'Impostazioni', href: '/dashboard/settings', icon: Settings },
 ];
 
-export function NavLinks() {
+// Definiamo le props che il componente può ricevere
+interface NavLinksProps {
+  onLinkClick?: () => void; // Questa è la nostra funzione "callback" opzionale
+}
+
+export function NavLinks({ onLinkClick }: NavLinksProps) {
   const pathname = usePathname();
 
   return (
@@ -23,6 +28,8 @@ export function NavLinks() {
         <Link
           key={link.name}
           href={link.href}
+          // Quando il link viene cliccato, eseguiamo la funzione ricevuta
+          onClick={onLinkClick} 
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
             { "bg-muted text-primary": pathname === link.href }
