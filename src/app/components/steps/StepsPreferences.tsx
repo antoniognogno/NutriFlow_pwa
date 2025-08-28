@@ -49,7 +49,7 @@ export function StepPreferences({ data, updateData, onBack, onSave }: StepProps)
 
         <div className="space-y-2">
           <Label htmlFor="disliked-foods">C&apos;è qualcosa che proprio non ti piace? (separale con una virgola)</Label>
-          <Textarea 
+            <Textarea 
             id="disliked-foods"
             placeholder="Es: cipolle, funghi, aglio..."
             value={data.disliked_foods}
