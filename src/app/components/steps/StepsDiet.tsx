@@ -36,7 +36,7 @@ export function StepDiet({ data, updateData, onNext, onBack }: StepProps) {
           onValueChange={(value) => updateData({ diet_type: value })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Seleziona un'opzione..." />
+            <SelectValue placeholder="Seleziona un&apos;opzione..." />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="omnivore">Onnivoro</SelectItem>

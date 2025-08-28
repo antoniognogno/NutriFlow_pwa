@@ -112,7 +112,7 @@ export default function WaterTrackerPage() {
     if (!userId) return;
     const { error } = await supabase.from('water_logs').insert([{ user_id: userId, amount_ml: amount }]);
     if (error) {
-      alert("Errore nell'aggiungere l'acqua: " + error.message);
+      alert("Errore nell&apos;aggiungere l&apos;acqua: " + error.message);
     } else {
       await fetchData(userId); // Ricarica tutti i dati, incluso il grafico
     }

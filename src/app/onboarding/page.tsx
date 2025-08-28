@@ -52,7 +52,7 @@ export default function OnboardingPage() {
 
   // Funzione finale per salvare tutto su Supabase
   const handleSaveProfile = async () => {
-    console.log("Tentativo di salvataggio per l'utente ID:", userId);
+    console.log("Tentativo di salvataggio per l&apos;utente ID:", userId);
     console.log("Dati da salvare:", formData);
     if (!userId) {
       alert("Errore: Utente non trovato.");

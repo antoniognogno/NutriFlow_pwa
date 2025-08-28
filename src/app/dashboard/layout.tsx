@@ -59,7 +59,7 @@ export default function DashboardLayout({
             <div className="sr-only">
               <SheetTitle>Menu Principale</SheetTitle>
               <SheetDescription>
-                Navigazione principale dell'applicazione e opzioni.
+                Navigazione principale dell&apos;applicazione e opzioni.
               </SheetDescription>
             </div>
             

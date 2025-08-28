@@ -71,7 +71,7 @@ export default function SettingsPage() {
       .eq('id', userId);
 
     if (error) {
-      alert("Errore durante l'aggiornamento: " + error.message);
+      alert("Errore durante l&apos;aggiornamento: " + error.message);
     } else {
       setSuccessMessage("Profilo aggiornato con successo!");
       setTimeout(() => setSuccessMessage(null), 3000);

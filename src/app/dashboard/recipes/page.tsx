@@ -128,7 +128,7 @@ export default function RecipesPage() {
           currentRecipes.map(r => r.meal === mealToRegen ? data.recipe : r)
         );
       } else {
-        throw new Error("La risposta dell'IA per la rigenerazione non era valida.");
+        throw new Error("La risposta dell&apos;IA per la rigenerazione non era valida.");
       }
     } catch (err) {
       const error = err as Error; 
@@ -177,7 +177,7 @@ export default function RecipesPage() {
             </RadioGroup>
           </div>
           <Button size="lg" className="w-full" onClick={handleGeneratePlan} disabled={isLoading || !userId || !!regeneratingMeal}>
-            {isLoading ? "L'IA sta cucinando per te..." : <><Sparkles className="mr-2 h-5 w-5" /> Genera il mio piano</>}
+            {isLoading ? "L&apos;IA sta cucinando per te..." : <><Sparkles className="mr-2 h-5 w-5" /> Genera il mio piano</>}
           </Button>
         </CardContent>
       </Card>
