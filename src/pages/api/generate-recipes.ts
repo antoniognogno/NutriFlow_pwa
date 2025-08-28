@@ -65,9 +65,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       throw error;
     }
-    
-    const { 
-      ingredients: customIngredients, 
+
+    const {
+      ingredients: customIngredients,
       breakfast_preference: breakfastPreference,
       recipe_hint: recipeHint,
       mealToRegenerate,
