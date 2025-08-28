@@ -1,8 +1,8 @@
 'use client'
 
+import { useState } from "react";
 import Link from "next/link";
 import { Menu, GalleryVerticalEnd } from "lucide-react";
-import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,18 +12,16 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { NavLinks } from "@/app/components/dashboard/navLink"; // Il nostro componente con i link
+import { NavLinks } from "@/app/components/dashboard/navLink";
 import { siteConfig } from "@/config/attributes";
 import { UserControls } from "@/app/components/dashboard/userControls";
 import { ModeToggle } from "@/components/mode-toggle";
-
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Stato per controllare l'apertura/chiusura della sidebar mobile
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
@@ -42,7 +40,7 @@ export default function DashboardLayout({
           <NavLinks />
         </nav>
 
-        {/* Menu Mobile - Ora controllato dallo stato */}
+        {/* Menu Mobile */}
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button
@@ -68,13 +66,12 @@ export default function DashboardLayout({
             <nav className="grid gap-6 text-base font-medium">
               <Link
                 href="/dashboard"
-                onClick={() => setIsMobileMenuOpen(false)} // Chiudi anche cliccando il logo
+                onClick={() => setIsMobileMenuOpen(false)}
                 className="flex items-center gap-2 text-lg font-semibold"
               >
                 <GalleryVerticalEnd className="h-6 w-6 text-primary" />
                 <span>{siteConfig.name}</span>
               </Link>
-              {/* Passiamo la funzione per chiudere il menu al componente NavLinks */}
               <NavLinks onLinkClick={() => setIsMobileMenuOpen(false)} />
             </nav>
             <div className="mt-auto">
@@ -83,8 +80,14 @@ export default function DashboardLayout({
           </SheetContent>
         </Sheet>
 
-        {/* Controlli Utente (a destra) */}
-        <div className="ml-auto flex items-center gap-4">
+        {/* --- SEZIONE CONTROLLI UTENTE AGGIORNATA --- */}
+        <div className="ml-auto flex items-center gap-2">
+          {/* Mostriamo il ModeToggle solo su schermi medi e superiori */}
+          <div className="hidden md:block">
+            <ModeToggle />
+          </div>
+          
+          {/* Il menu utente è sempre visibile */}
           <UserControls />
         </div>
       </header>
