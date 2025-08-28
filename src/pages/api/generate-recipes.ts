@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("--- NUOVA RICHIESTA DI RIGENERAZIONE RICEVUTA ---");
     console.log("BODY RICEVUTO:", JSON.stringify(req.body, null, 2));
 
-    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown-ip';
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown-ip';
     if (Array.isArray(ip)) {
       ip = ip[0];
     }
