@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
@@ -50,7 +50,7 @@ export default function WaterTrackerPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // --- NUOVA FUNZIONE FETCHDATA CON AGGREGAZIONE ---
-  const fetchData = async (currentUserId: string) => {
+  const fetchData = useCallback(async (currentUserId: string) => {
     const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
     
     // 1. Recuperiamo i dati come prima
@@ -91,7 +91,7 @@ export default function WaterTrackerPage() {
       
       setChartData(formattedData);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     const initializePage = async () => {
@@ -106,7 +106,7 @@ export default function WaterTrackerPage() {
       setIsLoading(false);
     };
     initializePage();
-  }, [router, supabase]);
+  }, [router, supabase, fetchData]);
 
   const handleAddWater = async (amount: number) => {
     if (!userId) return;

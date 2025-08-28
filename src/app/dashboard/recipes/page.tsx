@@ -79,8 +79,9 @@ export default function RecipesPage() {
       if (data.recipes) setRecipes(data.recipes);
       else throw new Error("La risposta dell'IA non era nel formato atteso.");
 
-    } catch (err: any) {
-      setError("Errore: " + err.message);
+    } catch (err) {
+      const error = err as Error; 
+      setError("Errore: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -129,8 +130,9 @@ export default function RecipesPage() {
       } else {
         throw new Error("La risposta dell'IA per la rigenerazione non era valida.");
       }
-    } catch (err: any) {
-      setError("Errore durante la rigenerazione: " + err.message);
+    } catch (err) {
+      const error = err as Error; 
+      setError("Errore durante la rigenerazione: " + error.message);
     } finally {
       setRegeneratingMeal(null);
     }
