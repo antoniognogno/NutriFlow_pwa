@@ -1,7 +1,5 @@
-// Assicurati che il file inizi con questa riga, è fondamentale!
 'use client'
 
-// 1. Importiamo tutto ciò che ci serve
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -20,59 +18,39 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-// Definiamo il componente LoginForm
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
 
-  // 2. Prepariamo gli "strumenti" che useremo
   const router = useRouter()
   const supabase = createClient()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null) // Stato per gestire i messaggi di errore
+  const [error, setError] = useState<string | null>(null)
 
-  // 3. Creiamo la funzione che gestirà il login
+  // Funzione di login SEMPLIFICATA
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault() // Impedisce alla pagina di ricaricarsi
-    setError(null) // Resetta l'errore a ogni tentativo
+    e.preventDefault()
+    setError(null)
 
-    const { data: { user }, error: loginError } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
-    })
+    });
 
-    if (loginError) {
-      setError("Credenziali non valide. Riprova.") // Mostriamo un errore generico
-      console.error("Login Error:", loginError.message) // Logghiamo l'errore vero per noi sviluppatori
-      return
+    if (error) {
+      setError("Credenziali non valide. Riprova.")
+      return;
     }
 
-    if (user) {
-      // Login avvenuto con successo, ora controlliamo il profilo per l'onboarding
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single()
-
-      if (profileError && profileError.code !== 'PGRST116') {
-        setError("Impossibile recuperare il profilo utente.")
-        return
-      }
-
-      if (profile && profile.username) {
-        // L'utente ha completato l'onboarding, lo mandiamo alla dashboard
-        router.push('/dashboard') // REINDIRIZZAMENTO ALLA HOME PAGE
-      } else {
-        // L'utente deve completare l'onboarding
-        router.push('/onboarding')
-      }
-    }
+    // Se il login ha successo, reindirizziamo semplicemente alla dashboard.
+    // Il MIDDLEWARE si occuperà di mandare l'utente al posto giusto
+    // (/dashboard se ha completato l'onboarding, /onboarding altrimenti).
+    router.push('/dashboard');
+    router.refresh(); // Forza un refresh dei dati del server
   }
 
-  // 4. Costruiamo l'interfaccia (JSX) e la colleghiamo alla nostra logica
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
@@ -90,7 +68,7 @@ export function LoginForm({
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
-                    type="input"
+                    type="email" // <-- CORRETTO
                     placeholder="tua@email.com"
                     required
                     value={email}
@@ -101,7 +79,7 @@ export function LoginForm({
                   <div className="flex items-center">
                     <Label htmlFor="password">Password</Label>
                     <Link
-                      href="#" // Qui andrà la pagina per il recupero password
+                      href="#"
                       className="ml-auto inline-block text-sm underline"
                     >
                       Dimenticata?
@@ -115,11 +93,10 @@ export function LoginForm({
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
-                {/* Mostra il messaggio di errore se esiste */}
                 {error && (
-                  <p className="text-sm font-medium text-red-500">{error}</p>
+                  <p className="text-sm font-medium text-red-500 text-center">{error}</p>
                 )}
-                <Button type="submit" className="w-full bg-primary text-white hover:bg-primary/90">
+                <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
                   Accedi
                 </Button>
               </div>
@@ -129,14 +106,13 @@ export function LoginForm({
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="px-2 text-foreground">
+                  <span className="bg-card px-2 text-muted-foreground">
                     Oppure continua con
                   </span>
                 </div>
               </div>
 
               <Button variant="outline" className="w-full">
-                {/* Qui puoi inserire l'SVG per Google se vuoi */}
                 Accedi con Google
               </Button>
 
@@ -150,9 +126,9 @@ export function LoginForm({
           </form>
         </CardContent>
       </Card>
-      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-        Cliccando continua, accetti i nostri <a href="#">Termini di Servizio</a>{" "}
-        e la nostra <a href="#">Privacy Policy</a>.
+      <div className="text-muted-foreground text-center text-xs text-balance">
+        Cliccando continua, accetti i nostri <a href="#" className="underline">Termini di Servizio</a>{" "}
+        e la nostra <a href="#" className="underline">Privacy Policy</a>.
       </div>
     </div>
   )
