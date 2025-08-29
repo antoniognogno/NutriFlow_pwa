@@ -16,7 +16,7 @@ export function StepUsername({ data, updateData, onNext }: StepProps) {
     <div className="space-y-6">
       <CardHeader className="p-0">
         <CardTitle>Come possiamo chiamarti?</CardTitle>
-    <CardDescription>Questo sar&agrave; il tuo nome visualizzato nell'&apos;app.</CardDescription>
+    <CardDescription>Questo sar&agrave; il tuo nome visualizzato nell&apos;app.</CardDescription>
       </CardHeader>
       
       <div className="space-y-2">
