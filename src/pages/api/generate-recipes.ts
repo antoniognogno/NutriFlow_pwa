@@ -6,22 +6,6 @@ import { generateRecipesSchema, regenerateMealSchema } from '@/lib/validators';
 
 // La funzione extractJson non serve più se usiamo responseMimeType: 'application/json',
 // ma la teniamo come fallback in caso di errori dell'IA.
-function extractJson(text: string): any {
-  const jsonStart = text.indexOf('{');
-  const jsonEnd = text.lastIndexOf('}');
-  
-  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
-    if (text.length > 0) return { error: text };
-    throw new Error('Nessun oggetto JSON valido trovato nella risposta dell\'IA.');
-  }
-  const jsonString = text.substring(jsonStart, jsonEnd + 1);
-  try {
-    return JSON.parse(jsonString);
-  } catch (error) {
-    console.error("Errore durante il parsing del JSON estratto:", error);
-    throw new Error("Il formato del JSON ricevuto dall'IA non è valido.");
-  }
-}
 
 const ipRequestCounts = new Map<string, { count: number; expiry: number }>();
 const RATE_LIMIT_COUNT = 10;
