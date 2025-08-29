@@ -57,24 +57,29 @@ export default function SettingsPage() {
   const handleUpdateProfile = async () => {
     if (!userId) return;
 
-    const allergiesArray = formData.allergies.split(',').map(item => item.trim()).filter(Boolean);
-    const dislikedFoodsArray = formData.disliked_foods.split(',').map(item => item.trim()).filter(Boolean);
+  const allergiesArray = formData.allergies.split(',').map(item => item.trim()).filter(Boolean);
+  const dislikedFoodsArray = formData.disliked_foods.split(',').map(item => item.trim()).filter(Boolean);
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log("user.id da Supabase:", user?.id);
+  console.log("userId passato nell'upsert:", userId);
 
     const { error } = await supabase
       .from('profiles')
-      .update({
+      .upsert([{
+        id: userId,
         username: formData.username,
         diet_type: formData.diet_type,
         allergies: allergiesArray,
         disliked_foods: dislikedFoodsArray,
-      })
-      .eq('id', userId);
+        updated_at: new Date().toISOString(),
+      }]);
 
     if (error) {
       alert("Errore durante l&apos;aggiornamento: " + error.message);
     } else {
       setSuccessMessage("Profilo aggiornato con successo!");
-      setTimeout(() => setSuccessMessage(null), 3000);
+      router.refresh();
+      router.push('/dashboard');
     }
   };
   

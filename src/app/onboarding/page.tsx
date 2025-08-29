@@ -52,8 +52,11 @@ export default function OnboardingPage() {
 
   // Funzione finale per salvare tutto su Supabase
   const handleSaveProfile = async () => {
-    console.log("Tentativo di salvataggio per lutente ID:", userId);
-    console.log("Dati da salvare:", formData);
+  console.log("Tentativo di salvataggio per lutente ID:", userId);
+  console.log("Dati da salvare:", formData);
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log("user.id da Supabase:", user?.id);
+  console.log("userId passato nell'upsert:", userId);
     if (!userId) {
       alert("Errore: Utente non trovato.");
       return;
@@ -64,14 +67,14 @@ export default function OnboardingPage() {
 
     const { error } = await supabase
       .from('profiles')
-      .update({
+      .upsert([{
+        id: userId,
         username: formData.username,
         diet_type: formData.diet_type,
         allergies: allergiesArray,
         disliked_foods: dislikedFoodsArray,
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+      }]);
 
     if (error) {
       alert("Errore durante il salvataggio: " + error.message);
