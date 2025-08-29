@@ -5,28 +5,29 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
 export default function DashboardPage() {
-  const router = useRouter()
   const supabase = createClient()
   const [username, setUsername] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // Ora recuperiamo solo il nome utente, senza fare controlli di reindirizzamento
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-        if (profile?.username) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile) {
           setUsername(profile.username)
-        } else {
-          router.push('/onboarding')
         }
-      } else {
-        router.push('/login')
       }
       setIsLoading(false)
     }
     fetchProfile()
-  }, [router, supabase])
+  }, [supabase])
 
   if (isLoading) {
     return (

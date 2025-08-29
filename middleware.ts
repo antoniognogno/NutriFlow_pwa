@@ -3,52 +3,54 @@ import { createClient } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
   try {
-    // Questo crea un client Supabase specifico per l'ambiente Middleware
     const { supabase, response } = createClient(request)
 
-    // Controlla se c'è un utente loggato
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    // Se NON c'è un utente e la richiesta NON è per una pagina di autenticazione,
-    // reindirizza alla pagina di login.
-    if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/signup')) {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // Se l'utente NON è loggato, l'unica pagina che può vedere è quella di login/auth
+    if (!user && !request.nextUrl.pathname.startsWith('/login')) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       return NextResponse.redirect(url)
     }
-    
-    // Se C'È un utente e sta provando ad accedere a login/signup,
-    // reindirizzalo alla sua dashboard.
-    if (user && (request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup'))) {
+
+    // Se l'utente È loggato...
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('id', user.id)
+        .single()
+
+      const onboardingComplete = profile?.username != null;
+
+      // Se l'onboarding NON è completo, l'unica pagina che può vedere è /onboarding
+      if (!onboardingComplete && request.nextUrl.pathname !== '/onboarding') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        return NextResponse.redirect(url)
+      }
+
+      // Se l'onboarding È completo e prova ad andare a /login o /onboarding, lo mandiamo alla dashboard
+      if (onboardingComplete && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/onboarding')) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)
+      }
     }
 
-    // Se nessuna delle condizioni sopra è vera, lascia che l'utente prosegua
     return response
 
   } catch (e) {
-    // Se c'è un errore, per sicurezza reindirizza al login
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 }
 
-// Configurazione del Middleware
 export const config = {
   matcher: [
-    /*
-     * Abbina tutti i percorsi delle richieste tranne quelli che iniziano con:
-     * - api (chiamate API)
-     * - _next/static (file statici)
-     * - _next/image (ottimizzazione immagini)
-     * - favicon.ico (icona del sito)
-     * Questo assicura che il middleware giri solo sulle pagine vere e proprie.
-     */
+    /* ... (il matcher non cambia) ... */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }
