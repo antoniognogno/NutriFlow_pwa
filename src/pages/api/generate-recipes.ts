@@ -11,6 +11,10 @@ const ipRequestCounts = new Map<string, { count: number; expiry: number }>();
 const RATE_LIMIT_COUNT = 10;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
+type GenerateBody = z.infer<typeof generateRecipesSchema>;
+type RegenerateBody = z.infer<typeof regenerateMealSchema>;
+type RequestBody = GenerateBody | RegenerateBody; 
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -35,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 2. Validazione con Zod (UN SOLO BLOCCO, PULITO)
-    let validatedBody;
+    let validatedBody: RequestBody;
     try {
       if (req.body.mealToRegenerate) {
         validatedBody = regenerateMealSchema.parse(req.body);
@@ -49,16 +53,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       throw error;
     }
-
-    const {
-      ingredients: customIngredients,
-      breakfast_preference: breakfastPreference,
-      recipe_hint: recipeHint,
-      mealToRegenerate,
-      existingMeals,
-      mealToDiscard,
-      discardedMeals,
-    } = validatedBody;
 
     // 3. Autenticazione e recupero profilo
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -81,13 +75,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const nutritionalInfoPrompt = `Per OGNI ricetta, DEVI fornire TUTTI i seguenti campi, inclusi i valori nutrizionali STIMATI: "meal", "title", "description", "ingredients" (array di stringhe), "instructions" (array di stringhe), "prep_time", "cook_time", "calories" (numero), "protein" (numero), "carbs" (numero), "fats" (numero).`;
     const personaPrompt = `Sei un nutrizionista e chef esperto della cucina ITALIANA. Conosci le ricette italiane da almeno 100 anni e non accetti variazioni (es. niente panna nella carbonara, solo guanciale). Affidati alla tradizione.`;
 
-    if (mealToRegenerate && Array.isArray(existingMeals)) {
+    if (
+      'mealToRegenerate' in validatedBody &&
+      Array.isArray((validatedBody as RegenerateBody).existingMeals)
+    ) {
+      
+      const { 
+        mealToRegenerate, 
+        existingMeals, 
+        mealToDiscard, 
+        discardedMeals,
+        ingredients: customIngredients,
+        breakfast_preference: breakfastPreference,
+      } = validatedBody as RegenerateBody;
+
+
       const otherMealsString = existingMeals.map((meal) => `- ${meal.meal}: ${meal.title}`).join('\n');
       const discardedMealString = mealToDiscard?.title ? `L'utente ha scartato la ricetta "${mealToDiscard.title}".` : '';
       const discardedHistoryString = Array.isArray(discardedMeals) && discardedMeals.length > 0 ? `Inoltre, evita di riproporre queste ricette già scartate: ${discardedMeals.join(', ')}` : '';
 
       prompt = `${personaPrompt} L'utente vuole rigenerare SOLO la ricetta per: ${mealToRegenerate}. ${discardedMealString} ${discardedHistoryString} Gli altri pasti sono: ${otherMealsString}. La nuova ricetta deve essere DIVERSA, complementare e bilanciata. Considera le preferenze dell'utente: Dieta: ${profile?.diet_type || 'onnivoro'}, Allergie: ${(profile?.allergies || []).join(', ') || 'nessuna'}, Cibi non graditi: ${(profile?.disliked_foods || []).join(', ') || 'nessuno'}. Fornisci UNA SOLA ricetta. Rispondi in formato JSON con la struttura: { "recipe": { ...dati ricetta... } }. ${nutritionalInfoPrompt}`;
     } else {
+
+      const {
+        ingredients: customIngredients,
+        breakfast_preference: breakfastPreference,
+        recipe_hint: recipeHint,
+      } = validatedBody;
+
       const ingredientsPromptSection = customIngredients ? `- Ingredienti da usare: ${customIngredients}.` : '';
       const breakfastPromptSection = breakfastPreference ? `- Preferenza colazione: ${breakfastPreference}.` : '';
       const hintPromptSection = recipeHint ? `- Suggerimento piatto: "${recipeHint}".` : '';
