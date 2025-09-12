@@ -28,6 +28,7 @@ interface WorkoutSelectorProps {
 
 export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelectorProps) {
   const router = useRouter();
+  router.refresh();
   const supabase = createClient();
   
   const [confirmText, setConfirmText] = useState("");
@@ -70,7 +71,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
             <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
               Questa azione è irreversibile. Verranno eliminati permanentemente la scheda
-              <strong className="text-foreground"> "{plan.name}" </strong> 
+                <strong className="text-foreground"> &quot;{plan.name}&quot; </strong> 
               e tutti i suoi allenamenti ed esercizi associati.
             </AlertDialogDescription>
           </AlertDialogHeader>

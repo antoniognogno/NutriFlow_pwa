@@ -3,8 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
 import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types"; 
 import WorkoutSelector from "@/app/components/dashboard/gym/WorkoutSelector";
 import { NewPlanDialog } from "@/app/components/dashboard/gym/NewPlanDialog";
@@ -23,21 +21,26 @@ export default function GymPage() {
       return;
     }
     
+    // --- LA CORREZIONE È QUI ---
     const { data, error } = await supabase
       .from('workout_plans')
       .select(`
-        id, name,
-        workouts ( id, name, muscle_group, 
-          workout_exercises ( id, exercise_name, target_sets, target_reps, order )
+        *, 
+        workouts (
+          *,
+          workout_exercises (
+            *
+          )
         )
       `)
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false }); // Ordina per le più recenti
+      .order('created_at', { ascending: false });
     
     if (error) {
       console.error("Errore nel recupero delle schede:", error);
     } else if (data) {
-      setPlans(data);
+      // Ora i dati corrispondono perfettamente al tipo, non serve più il cast
+      setPlans(data); 
     }
     setIsLoading(false);
   }, [router, supabase]);
@@ -62,13 +65,15 @@ export default function GymPage() {
           <div className="flex flex-col items-center gap-1 text-center">
             <h3 className="text-2xl font-bold tracking-tight">Nessuna scheda trovata</h3>
             <p className="text-sm text-muted-foreground">Inizia creando la tua prima scheda di allenamento.</p>
-            <NewPlanDialog onSaveSuccess={fetchWorkoutPlans} />
+            {/* È utile avere il pulsante anche qui */}
+            <div className="mt-4">
+              <NewPlanDialog onSaveSuccess={fetchWorkoutPlans} />
+            </div>
           </div>
         </div>
       ) : (
         <div className="space-y-6">
           {plans.map((plan) => (
-            // Passiamo la funzione di callback per l'aggiornamento
             <WorkoutSelector 
               key={plan.id} 
               plan={plan} 

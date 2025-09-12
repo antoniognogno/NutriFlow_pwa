@@ -34,8 +34,11 @@ const getInitialState = () => ({
     planName: `Scheda`,
     workouts: JSON.parse(JSON.stringify(defaultWorkouts))
 });
+interface NewPlanDialogProps {
+  onSaveSuccess: () => void;
+}
 
-export function NewPlanDialog() {
+export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
   const router = useRouter();
   const supabase = createClient();
   
@@ -92,38 +95,42 @@ export function NewPlanDialog() {
 
     try {
       const { data: plan, error: planError } = await supabase
-        .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
+      .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
       if (planError) throw planError;
 
       for (const workoutData of workouts) {
-        if (!workoutData.name.trim()) continue;
+      if (!workoutData.name.trim()) continue;
 
-        const { data: workout, error: workoutError } = await supabase
-          .from('workouts').insert({ plan_id: plan.id, name: workoutData.name }).select('id').single();
-        if (workoutError) throw workoutError;
+      const { data: workout, error: workoutError } = await supabase
+        .from('workouts').insert({ plan_id: plan.id, name: workoutData.name }).select('id').single();
+      if (workoutError) throw workoutError;
 
-        const exercisesToInsert = workoutData.exercises
-          .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
-          .map((ex, exIndex) => ({
-            workout_id: workout.id,
-            exercise_name: ex.exercise_name,
-            target_sets: parseInt(ex.target_sets, 10) || null,
-            target_reps: ex.target_reps,
-            order: exIndex + 1,
-          }));
+      const exercisesToInsert = workoutData.exercises
+        .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
+        .map((ex, exIndex) => ({
+        workout_id: workout.id,
+        exercise_name: ex.exercise_name,
+        target_sets: parseInt(ex.target_sets, 10) || null,
+        target_reps: ex.target_reps,
+        order: exIndex + 1,
+        }));
 
-        if (exercisesToInsert.length > 0) {
-          const { error: exercisesError } = await supabase.from('workout_exercises').insert(exercisesToInsert);
-          if (exercisesError) throw exercisesError;
-        }
+      if (exercisesToInsert.length > 0) {
+        const { error: exercisesError } = await supabase.from('workout_exercises').insert(exercisesToInsert);
+        if (exercisesError) throw exercisesError;
+      }
       }
       
       setOpen(false);
       setShowSuccessDialog(true);
       router.refresh();
 
-    } catch (err: any) {
+    } catch (err) {
+      if (err instanceof Error) {
       setError("Errore durante il salvataggio: " + err.message);
+      } else {
+      setError("Errore durante il salvataggio.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -131,6 +138,7 @@ export function NewPlanDialog() {
 
   const handleSuccessDialogClose = () => {
     setShowSuccessDialog(false);
+    onSaveSuccess();
     const initialState = getInitialState();
     setPlanName(initialState.planName);
     setWorkouts(initialState.workouts);
