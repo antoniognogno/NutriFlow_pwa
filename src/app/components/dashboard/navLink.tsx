@@ -3,12 +3,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, GlassWater, Dumbbell, Settings, BookOpen } from "lucide-react";
+import { Home, GlassWater, Dumbbell, Settings, BookOpen, LineChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
   { name: 'Gym Tracker', href: '/dashboard/gym', icon: Dumbbell },
+  { name: 'Gym Stats', href: '/dashboard/stats', icon: LineChart },
   { name: 'Water Tracker', href: '/dashboard/water', icon: GlassWater },
   { name: 'Ricette', href: '/dashboard/recipes', icon: BookOpen },
   { name: 'Impostazioni', href: '/dashboard/settings', icon: Settings },
@@ -32,7 +33,7 @@ export function NavLinks({ onLinkClick }: NavLinksProps) {
           onClick={onLinkClick} 
           className={cn(
             "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-            { "bg-muted text-primary": pathname === link.href }
+            { "bg-muted text-primary": (pathname ?? "").startsWith(link.href) }
           )}
         >
           <link.icon className="h-4 w-4" />

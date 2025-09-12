@@ -31,9 +31,10 @@ const defaultWorkouts: WorkoutForm[] = [
 ];
 
 const getInitialState = () => ({
-    planName: `Scheda`,
+    planName: `La Mia Nuova Scheda`,
     workouts: JSON.parse(JSON.stringify(defaultWorkouts))
 });
+
 interface NewPlanDialogProps {
   onSaveSuccess: () => void;
 }
@@ -50,7 +51,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
   const [planName, setPlanName] = useState(getInitialState().planName);
   const [workouts, setWorkouts] = useState<WorkoutForm[]>(getInitialState().workouts);
 
-    const handleWorkoutChange = (index: number, value: string) => {
+  const handleWorkoutChange = (index: number, value: string) => {
     const newWorkouts = [...workouts];
     newWorkouts[index].name = value;
     setWorkouts(newWorkouts);
@@ -66,7 +67,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
   
   const handleExerciseChange = (workoutIndex: number, exIndex: number, field: keyof ExerciseForm, value: string) => {
     const newWorkouts = [...workouts];
-    newWorkouts[workoutIndex].exercises[exIndex][field] = value;
+    (newWorkouts[workoutIndex].exercises[exIndex] as any)[field] = value;
     setWorkouts(newWorkouts);
   };
 
@@ -95,42 +96,38 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
 
     try {
       const { data: plan, error: planError } = await supabase
-      .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
+        .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
       if (planError) throw planError;
 
       for (const workoutData of workouts) {
-      if (!workoutData.name.trim()) continue;
+        if (!workoutData.name.trim()) continue;
 
-      const { data: workout, error: workoutError } = await supabase
-        .rpc('insert_workout', { plan_id: plan.id, name: workoutData.name });
-      if (workoutError) throw workoutError;
+        const { data: workoutId, error: workoutError } = await supabase
+          .rpc('insert_workout', { p_plan_id: plan.id, p_name: workoutData.name });
+        
+        if (workoutError) throw workoutError;
 
-      const exercisesToInsert = workoutData.exercises
-        .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
-        .map((ex, exIndex) => ({
-        workout_id: workout.id,
-        exercise_name: ex.exercise_name,
-        target_sets: parseInt(ex.target_sets, 10) || null,
-        target_reps: ex.target_reps,
-        order: exIndex + 1,
-        }));
+        const exercisesToInsert = workoutData.exercises
+          .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
+          .map((ex, exIndex) => ({
+            workout_id: workoutId,
+            exercise_name: ex.exercise_name,
+            target_sets: parseInt(ex.target_sets, 10) || null,
+            target_reps: ex.target_reps,
+            order: exIndex + 1,
+          }));
 
-      if (exercisesToInsert.length > 0) {
-        const { error: exercisesError } = await supabase.rpc('insert_workout_exercises', { exercises: exercisesToInsert });
-        if (exercisesError) throw exercisesError;
-      }
+        if (exercisesToInsert.length > 0) {
+          const { error: exercisesError } = await supabase.rpc('insert_workout_exercises', { p_exercises: exercisesToInsert });
+          if (exercisesError) throw exercisesError;
+        }
       }
       
       setOpen(false);
       setShowSuccessDialog(true);
-      router.refresh();
 
-    } catch (err) {
-      if (err instanceof Error) {
+    } catch (err: any) {
       setError("Errore durante il salvataggio: " + err.message);
-      } else {
-      setError("Errore durante il salvataggio.");
-      }
     } finally {
       setIsSaving(false);
     }
@@ -142,7 +139,6 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
     const initialState = getInitialState();
     setPlanName(initialState.planName);
     setWorkouts(initialState.workouts);
-    router.refresh(); 
   };
   
   const resetFormOnOpen = (isOpen: boolean) => {
@@ -153,7 +149,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
           setError(null);
       }
       setOpen(isOpen);
-  }
+  };
 
   return (
     <>
@@ -188,15 +184,12 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
                   
                   <div className="space-y-2 pl-4">
                     {workout.exercises.map((ex, exIndex) => (
-                      // --- LAYOUT DEGLI ESERCIZI RESO ANCORA PIÙ RESPONSIVE ---
                       <div key={exIndex} className="space-y-2">
-                        {/* Riga 1: Nome Esercizio e Tasto Elimina */}
                         <div className="flex items-center gap-2">
                            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
                            <Input placeholder="Nome Esercizio" value={ex.exercise_name} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'exercise_name', e.target.value)} />
                            <Button variant="ghost" size="icon" onClick={() => removeExercise(wIndex, exIndex)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
-                        {/* Riga 2: Serie e Reps */}
                         <div className="flex items-center gap-2 pl-6">
                             <Input className="flex-1 min-w-[60px] text-center" placeholder="Serie" value={ex.target_sets} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_sets', e.target.value)} />
                             <span className="text-muted-foreground font-semibold">x</span>

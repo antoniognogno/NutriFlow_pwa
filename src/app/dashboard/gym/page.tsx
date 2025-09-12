@@ -10,7 +10,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export default function GymPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createClient() as any;
   const [plans, setPlans] = useState<PlanWithWorkoutsAndExercises[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
