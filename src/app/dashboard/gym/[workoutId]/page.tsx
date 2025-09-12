@@ -125,15 +125,14 @@ export default function WorkoutSessionPage({ params }: { params: { workoutId: st
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-            <h1 className="text-2xl font-bold">{workout?.name}</h1>
-            <p className="text-muted-foreground">Registra le tue serie qui sotto.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold">{workout?.name}</h1>
+          <p className="text-muted-foreground text-sm">Registra le tue serie qui sotto.</p>
         </div>
-        <Button onClick={handleFinishWorkout} disabled={isSaving}>
-          {isSaving ? "Salvataggio..." : "Termina Allenamento"}
-        </Button>
       </div>
+      
+      {/* Contenuto principale con le card */}
       <div className="space-y-4">
         {workout?.workout_exercises.map(exercise => (
           <ExerciseCard 
@@ -142,6 +141,13 @@ export default function WorkoutSessionPage({ params }: { params: { workoutId: st
             onUpdateLogs={updateExerciseLogs}
           />
         ))}
+      </div>
+
+      {/* Pulsante di fine allenamento spostato in fondo */}
+      <div className="mt-6 flex justify-center">
+        <Button onClick={handleFinishWorkout} disabled={isSaving} size="lg">
+          {isSaving ? "Salvataggio..." : "Termina e Salva Allenamento"}
+        </Button>
       </div>
     </div>
   );

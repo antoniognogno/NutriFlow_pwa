@@ -5,15 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 
-// --- MODIFICA CHIAVE QUI ---
-// Ora tutti i campi del form sono stringhe, che è la pratica corretta.
 export interface SetLog {
-  set_number: number; // Manteniamo questo come numero per la visualizzazione
+  set_number: number;
   reps: string;
   weight_kg: string;
 }
 
-// Definiamo un tipo per le sole chiavi che possiamo modificare
 export type UpdatableSetLogFields = 'reps' | 'weight_kg';
 
 interface SetInputRowProps {
@@ -26,38 +23,43 @@ interface SetInputRowProps {
 
 export function SetInputRow({ set, index, onUpdate, onDelete, isDeletable }: SetInputRowProps) {
   return (
-    <div className="flex items-center gap-4">
-      <Label className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-lg font-bold">
+    <div className="flex items-center gap-2 sm:gap-4">
+      <Label className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted text-lg font-bold shrink-0">
         {set.set_number}
       </Label>
-      <div className="grid flex-1 grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor={`weight-${index}`} className="sr-only">Peso (kg)</Label>
+      
+      {/* Griglia per gli input */}
+      <div className="grid grid-cols-2 flex-1 gap-2">
+        <div className="space-y-1">
+          <Label htmlFor={`weight-${index}`} className="text-xs text-muted-foreground">Peso (kg)</Label>
           <Input 
             id={`weight-${index}`}
             type="number"
-            placeholder="Peso (kg)"
+            placeholder="0"
             value={set.weight_kg}
             onChange={(e) => onUpdate(index, 'weight_kg', e.target.value)}
+            className="text-center"
           />
         </div>
-        <div>
-          <Label htmlFor={`reps-${index}`} className="sr-only">Reps</Label>
+        <div className="space-y-1">
+          <Label htmlFor={`reps-${index}`} className="text-xs text-muted-foreground">Reps</Label>
           <Input
             id={`reps-${index}`}
             type="number"
-            placeholder="Reps"
+            placeholder="0"
             value={set.reps}
             onChange={(e) => onUpdate(index, 'reps', e.target.value)}
+            className="text-center"
           />
         </div>
       </div>
+
       <Button
         variant="ghost"
         size="icon"
         onClick={() => onDelete(index)}
         disabled={!isDeletable}
-        className={!isDeletable ? 'opacity-0 cursor-not-allowed' : ''}
+        className={`shrink-0 ${!isDeletable ? 'opacity-0 cursor-default' : ''}`}
       >
         <Trash2 className="h-4 w-4" />
         <span className="sr-only">Elimina serie</span>
