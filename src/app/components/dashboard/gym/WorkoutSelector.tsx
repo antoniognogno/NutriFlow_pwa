@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createClient } from "@/lib/supabase/client";
 import Link from 'next/link';
 import { Dumbbell, Trash2 } from 'lucide-react';
-import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types';
+import { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -35,7 +35,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
   const handleDeletePlan = async () => {
     setIsDeleting(true);
     setError(null);
-    const { error } = await supabase.from('workout_plans').delete().eq('id', plan.id);
+    const { error } = await supabase.rpc('delete_workout_plan', { id: plan.id });
     if (error) {
       setError("Errore durante l'eliminazione: " + error.message);
       console.error(error);
@@ -80,7 +80,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
             <AlertDialogCancel onClick={() => setConfirmText("")}>Annulla</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeletePlan}
-              disabled={confirmText !== "CONFERMA" || isDeleting}
+              disabled={confirmText !== `${plan.name}` || isDeleting}
               className="bg-destructive hover:bg-destructive/90"
             >
               {isDeleting ? "Eliminazione..." : "Sì, elimina"}

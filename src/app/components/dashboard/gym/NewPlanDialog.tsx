@@ -25,9 +25,9 @@ interface WorkoutForm {
 
 // Stato iniziale pre-compilato
 const defaultWorkouts: WorkoutForm[] = [
-    { name: "Petto/Tricipiti/Spalle", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8-10" }] },
-    { name: "Schiena/Bicipiti", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "AMRAP" }] },
-    { name: "Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8-10" }] }
+    { name: "Petto/Tricipiti/Spalle", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
+    { name: "Schiena/Bicipiti", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
+    { name: "Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8" }] }
 ];
 
 const getInitialState = () => ({
@@ -102,7 +102,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
       if (!workoutData.name.trim()) continue;
 
       const { data: workout, error: workoutError } = await supabase
-        .from('workouts').insert({ plan_id: plan.id, name: workoutData.name }).select('id').single();
+        .rpc('insert_workout', { plan_id: plan.id, name: workoutData.name });
       if (workoutError) throw workoutError;
 
       const exercisesToInsert = workoutData.exercises
@@ -116,7 +116,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
         }));
 
       if (exercisesToInsert.length > 0) {
-        const { error: exercisesError } = await supabase.from('workout_exercises').insert(exercisesToInsert);
+        const { error: exercisesError } = await supabase.rpc('insert_workout_exercises', { exercises: exercisesToInsert });
         if (exercisesError) throw exercisesError;
       }
       }

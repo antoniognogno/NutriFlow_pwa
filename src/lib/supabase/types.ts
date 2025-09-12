@@ -24,6 +24,7 @@ export type Database = {
           set_number: number
           user_id: string | null
           weight_kg: number
+          workout_exercise_id: string | null
         }
         Insert: {
           created_at?: string
@@ -34,6 +35,7 @@ export type Database = {
           set_number: number
           user_id?: string | null
           weight_kg: number
+          workout_exercise_id?: string | null
         }
         Update: {
           created_at?: string
@@ -44,6 +46,7 @@ export type Database = {
           set_number?: number
           user_id?: string | null
           weight_kg?: number
+          workout_exercise_id?: string | null
         }
         Relationships: [
           {
@@ -51,6 +54,13 @@ export type Database = {
             columns: ["log_id"]
             isOneToOne: false
             referencedRelation: "workout_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercise_logs_workout_exercise_id_fkey"
+            columns: ["workout_exercise_id"]
+            isOneToOne: false
+            referencedRelation: "workout_exercises"
             referencedColumns: ["id"]
           },
         ]
@@ -367,12 +377,23 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-// Tipo personalizzato per le schede di allenamento complete
-export type PlanWithWorkoutsAndExercises = Tables<'workout_plans'> & {
-  workouts: Array<
-    Tables<'workouts'> & {
-      workout_exercises: Array<Tables<'workout_exercises'>>
-    }
-  >
+export type PlanWithWorkoutsAndExercises = {
+  id: string
+  name: string
+  created_at: string
+  user_id: string
+  workouts: Array<{
+    id: string
+    name: string
+    muscle_group: string | null
+    plan_id: string
+    exercises: Array<{
+      id: string
+      exercise_name: string
+      order: number
+      target_reps: string | null
+      target_sets: number | null
+      workout_id: string
+    }>
+  }>
 }

@@ -16,35 +16,19 @@ export default function GymPage() {
 
   const fetchWorkoutPlans = useCallback(async () => {
     setIsLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-      return;
-    }
     
-    // --- LA CORREZIONE DEFINITIVA È QUI ---
-    const { data, error } = await supabase
-      .from('workout_plans')
-      .select(`
-        *, 
-        workouts (
-          *,
-          workout_exercises (
-            *
-          )
-        )
-      `)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+    // MODIFICA: Chiamiamo la funzione RPC
+    const { data, error } = await supabase.rpc('get_user_workout_plans');
     
     if (error) {
       console.error("Errore nel recupero delle schede:", error);
+      // Qui potremmo voler mostrare un errore all'utente
     } else if (data) {
-      // Ora i dati corrispondono perfettamente al tipo
+      // La RPC restituisce un array JSON, che possiamo usare direttamente
       setPlans(data); 
     }
     setIsLoading(false);
-  }, [router, supabase]);
+  }, [supabase]);
 
   useEffect(() => {
     fetchWorkoutPlans();

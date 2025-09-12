@@ -10,7 +10,12 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
   title: "NutriFlow",
-  description: "Il tuo assistente personale per il benessere",
+  description: "Il tuo assistente personale per il benessere.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "NutriFlow",
+  },
 };
 
 export default function RootLayout({
