@@ -3,9 +3,17 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { PlusCircle } from "lucide-react";
 import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types"; 
 import WorkoutSelector from "@/app/components/dashboard/gym/WorkoutSelector";
 import { NewPlanDialog } from "@/app/components/dashboard/gym/NewPlanDialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"; // Importiamo i componenti dell'Accordion
 
 export default function GymPage() {
   const router = useRouter();
@@ -21,16 +29,12 @@ export default function GymPage() {
       return;
     }
     
-    // --- LA CORREZIONE È QUI ---
     const { data, error } = await supabase
       .from('workout_plans')
       .select(`
-        *, 
-        workouts (
-          *,
-          workout_exercises (
-            *
-          )
+        id, name, created_at,
+        workouts ( id, name, muscle_group, 
+          workout_exercises ( id, exercise_name, target_sets, target_reps, order )
         )
       `)
       .eq('user_id', user.id)
@@ -39,8 +43,7 @@ export default function GymPage() {
     if (error) {
       console.error("Errore nel recupero delle schede:", error);
     } else if (data) {
-      // Ora i dati corrispondono perfettamente al tipo, non serve più il cast
-      setPlans(data); 
+      setPlans(data);
     }
     setIsLoading(false);
   }, [router, supabase]);
@@ -56,31 +59,38 @@ export default function GymPage() {
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold md:text-2xl">I Tuoi Allenamenti</h1>
+        <h1 className="text-lg font-semibold md:text-2xl">Le Tue Schede di Allenamento</h1>
         <NewPlanDialog onSaveSuccess={fetchWorkoutPlans} />
       </div>
 
       {plans.length === 0 ? (
         <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm">
-          <div className="flex flex-col items-center gap-1 text-center">
+          <div className="flex flex-col items-center gap-2 text-center">
             <h3 className="text-2xl font-bold tracking-tight">Nessuna scheda trovata</h3>
             <p className="text-sm text-muted-foreground">Inizia creando la tua prima scheda di allenamento.</p>
-            {/* È utile avere il pulsante anche qui */}
             <div className="mt-4">
               <NewPlanDialog onSaveSuccess={fetchWorkoutPlans} />
             </div>
           </div>
         </div>
       ) : (
-        <div className="space-y-6">
+        // --- NUOVA UI CON ACCORDION ---
+        <Accordion type="single" collapsible className="w-full space-y-4">
           {plans.map((plan) => (
-            <WorkoutSelector 
-              key={plan.id} 
-              plan={plan} 
-              onDeleteSuccess={fetchWorkoutPlans} 
-            />
+            <AccordionItem value={plan.id} key={plan.id} className="border rounded-lg">
+              <AccordionTrigger className="px-6 text-lg font-semibold hover:no-underline">
+                {plan.name}
+              </AccordionTrigger>
+              <AccordionContent className="p-6 pt-0">
+                {/* Il nostro vecchio componente ora vive qui dentro */}
+                <WorkoutSelector 
+                  plan={plan} 
+                  onDeleteSuccess={fetchWorkoutPlans} 
+                />
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
       )}
     </div>
   );

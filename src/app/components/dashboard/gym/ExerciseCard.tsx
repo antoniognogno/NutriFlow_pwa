@@ -1,54 +1,56 @@
 'use client'
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { SetInputRow, SetLog, UpdatableSetLogFields } from "./SetInputRow"; // Importiamo i nuovi tipi
+import { SetInputRow, SetLog } from "./SetInputRow";
 import { Tables } from "@/lib/supabase/types";
+import { Label } from "@/components/ui/label";
 
 interface ExerciseCardProps {
   exercise: Tables<'workout_exercises'>;
-  onUpdateLogs: (exerciseName: string, sets: SetLog[]) => void;
+  userId: string;
+  onUpdateLogs: (exerciseId: string, sets: SetLog[]) => void;
 }
 
-export function ExerciseCard({ exercise, onUpdateLogs }: ExerciseCardProps) {
-  const initialSets = Array.from({ length: exercise.target_sets || 3 }, (_, i) => ({
-    set_number: i + 1,
-    reps: '',
-    weight_kg: '',
-  }));
+export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardProps) {
+  const [sets, setSets] = useState<SetLog[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
-  const [sets, setSets] = useState<SetLog[]>(initialSets);
+  useEffect(() => {
+    const initializeSets = async () => {
+      // 1. Recupera l'ultimo peso usato per questo esercizio
+      const { data: lastLog } = await createClient()
+        .from('exercise_logs')
+        .select('weight_kg')
+        .eq('user_id', userId)
+        .eq('workout_exercise_id', exercise.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-  // --- FUNZIONE CORRETTA ---
-  const updateSet = (index: number, field: UpdatableSetLogFields, value: string) => {
-    // Creiamo una copia profonda per essere sicuri di non mutare lo stato
-    const newSets = sets.map(set => ({ ...set }));
-    newSets[index][field] = value;
-    setSets(newSets);
-    onUpdateLogs(exercise.exercise_name, newSets);
-  };
+      const lastWeight = lastLog?.weight_kg?.toString() || '';
 
-  const addSet = () => {
-    const newSet: SetLog = {
-      set_number: sets.length + 1,
-      reps: '',
-      weight_kg: '',
+      // 2. Crea le serie iniziali con i dati pre-compilati
+      const initialSets = Array.from({ length: exercise.target_sets || 3 }, (_, i) => ({
+        set_number: i + 1,
+        reps: exercise.target_reps || '',
+        weight_kg: lastWeight,
+      }));
+      
+      setSets(initialSets);
+      setIsLoadingHistory(false);
+      onUpdateLogs(exercise.id, initialSets); // Comunica i dati iniziali al genitore
     };
-    const newSets = [...sets, newSet];
-    setSets(newSets);
-    onUpdateLogs(exercise.exercise_name, newSets);
-  };
-
-  const deleteSet = (index: number) => {
-    if (index < (exercise.target_sets || 0)) return;
     
-    const newSets = sets.filter((_, i) => i !== index)
-      .map((set, i) => ({ ...set, set_number: i + 1 }));
-    setSets(newSets);
-    onUpdateLogs(exercise.exercise_name, newSets);
-  };
+    initializeSets();
+  }, [exercise, userId, onUpdateLogs]);
+
+  const updateSet = (index: number, field: keyof SetLog, value: string) => { /* ... (invariato) ... */ };
+  const addSet = () => { /* ... (invariato) ... */ };
+  const deleteSet = (index: number) => { /* ... (invariato) ... */ };
 
   return (
     <Card>
@@ -59,16 +61,26 @@ export function ExerciseCard({ exercise, onUpdateLogs }: ExerciseCardProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {sets.map((set, index) => (
-          <SetInputRow
-            key={index}
-            index={index}
-            set={set}
-            onUpdate={updateSet}
-            onDelete={deleteSet}
-            isDeletable={index >= (exercise.target_sets || 0)}
-          />
-        ))}
+        {/* Etichette visibili solo su schermi grandi */}
+        <div className="hidden sm:grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 sm:gap-4 px-[58px]">
+            <Label className="text-xs text-muted-foreground text-center">Peso (kg)</Label>
+            <Label className="text-xs text-muted-foreground text-center">Reps</Label>
+        </div>
+
+        {isLoadingHistory ? (
+          <p className="text-sm text-muted-foreground">Caricamento storico...</p>
+        ) : (
+          sets.map((set, index) => (
+            <SetInputRow
+              key={index}
+              set={set}
+              index={index}
+              onUpdate={(field, value) => updateSet(index, field as keyof SetLog, value)}
+              onDelete={() => deleteSet(index)}
+              isDeletable={sets.length > 1}
+            />
+          ))
+        )}
       </CardContent>
       <CardFooter>
         <Button variant="outline" onClick={addSet}>

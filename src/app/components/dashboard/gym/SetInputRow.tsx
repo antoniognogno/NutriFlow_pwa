@@ -10,7 +10,6 @@ export interface SetLog {
   reps: string;
   weight_kg: string;
 }
-
 export type UpdatableSetLogFields = 'reps' | 'weight_kg';
 
 interface SetInputRowProps {
@@ -23,46 +22,37 @@ interface SetInputRowProps {
 
 export function SetInputRow({ set, index, onUpdate, onDelete, isDeletable }: SetInputRowProps) {
   return (
-    <div className="flex items-center gap-2 sm:gap-4">
-      <Label className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted text-lg font-bold shrink-0">
+    // Usiamo Grid per un allineamento perfetto a colonne
+    <div className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 sm:gap-4">
+      <Label className="flex h-10 w-10 items-center justify-center rounded-md border bg-muted text-lg font-bold">
         {set.set_number}
       </Label>
       
-      {/* Griglia per gli input */}
-      <div className="grid grid-cols-2 flex-1 gap-2">
-        <div className="space-y-1">
-          <Label htmlFor={`weight-${index}`} className="text-xs text-muted-foreground">Peso (kg)</Label>
-          <Input 
-            id={`weight-${index}`}
-            type="number"
-            placeholder="0"
-            value={set.weight_kg}
-            onChange={(e) => onUpdate(index, 'weight_kg', e.target.value)}
-            className="text-center"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor={`reps-${index}`} className="text-xs text-muted-foreground">Reps</Label>
-          <Input
-            id={`reps-${index}`}
-            type="number"
-            placeholder="0"
-            value={set.reps}
-            onChange={(e) => onUpdate(index, 'reps', e.target.value)}
-            className="text-center"
-          />
-        </div>
-      </div>
-
+      <Input 
+        type="number"
+        placeholder="Peso"
+        aria-label="Peso (kg)"
+        value={set.weight_kg}
+        onChange={(e) => onUpdate(index, 'weight_kg', e.target.value)}
+        className="text-center"
+      />
+      <Input
+        type="number"
+        placeholder="Reps"
+        aria-label="Ripetizioni"
+        value={set.reps}
+        onChange={(e) => onUpdate(index, 'reps', e.target.value)}
+        className="text-center"
+      />
+      
       <Button
         variant="ghost"
         size="icon"
         onClick={() => onDelete(index)}
         disabled={!isDeletable}
-        className={`shrink-0 ${!isDeletable ? 'opacity-0 cursor-default' : ''}`}
+        className={`h-10 w-10 ${!isDeletable ? 'opacity-0 cursor-default' : ''}`}
       >
         <Trash2 className="h-4 w-4" />
-        <span className="sr-only">Elimina serie</span>
       </Button>
     </div>
   );

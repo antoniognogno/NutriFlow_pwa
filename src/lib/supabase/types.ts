@@ -22,6 +22,7 @@ export type Database = {
           log_id: string
           reps: number
           set_number: number
+          user_id: string | null
           weight_kg: number
         }
         Insert: {
@@ -31,6 +32,7 @@ export type Database = {
           log_id: string
           reps: number
           set_number: number
+          user_id?: string | null
           weight_kg: number
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           log_id?: string
           reps?: number
           set_number?: number
+          user_id?: string | null
           weight_kg?: number
         }
         Relationships: [
@@ -364,7 +367,6 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
 
 // Tipo personalizzato per le schede di allenamento complete
 export type PlanWithWorkoutsAndExercises = Tables<'workout_plans'> & {
