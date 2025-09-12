@@ -44,7 +44,9 @@ export default function WorkoutSessionPage({ params }: { params: { workoutId: st
       return;
     }
     
-    data.workout_exercises.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    data.workout_exercises.sort(
+      (a: Tables<'workout_exercises'>, b: Tables<'workout_exercises'>) => (a.order ?? 0) - (b.order ?? 0)
+    );
     setWorkout(data as WorkoutWithExercises);
     setIsLoading(false);
   }, [router, supabase]);

@@ -61,18 +61,18 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
             <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
             <AlertDialogDescription>
               Questa azione è irreversibile. Verranno eliminati permanentemente la scheda
-              <strong className="text-foreground"> "{plan.name}" </strong> 
+              <strong className="text-foreground"> &quot;{plan.name}&quot; </strong>
               e tutti i suoi allenamenti.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="my-4 space-y-2">
             <p className="text-sm text-muted-foreground">
-              Per confermare, scrivi <strong className="text-foreground">CONFERMA</strong> qui sotto.
+              Per confermare, scrivi <strong className="text-foreground">{plan.name}</strong> qui sotto.
             </p>
             <Input 
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="CONFERMA"
+              placeholder={plan.name}
             />
             {error && <p className="text-sm text-red-500">{error}</p>}
           </div>

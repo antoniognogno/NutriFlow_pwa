@@ -3,17 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
 import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types"; 
 import WorkoutSelector from "@/app/components/dashboard/gym/WorkoutSelector";
 import { NewPlanDialog } from "@/app/components/dashboard/gym/NewPlanDialog";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"; // Importiamo i componenti dell'Accordion
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export default function GymPage() {
   const router = useRouter();
@@ -29,12 +22,16 @@ export default function GymPage() {
       return;
     }
     
+    // --- LA CORREZIONE DEFINITIVA È QUI ---
     const { data, error } = await supabase
       .from('workout_plans')
       .select(`
-        id, name, created_at,
-        workouts ( id, name, muscle_group, 
-          workout_exercises ( id, exercise_name, target_sets, target_reps, order )
+        *, 
+        workouts (
+          *,
+          workout_exercises (
+            *
+          )
         )
       `)
       .eq('user_id', user.id)
@@ -43,7 +40,8 @@ export default function GymPage() {
     if (error) {
       console.error("Errore nel recupero delle schede:", error);
     } else if (data) {
-      setPlans(data);
+      // Ora i dati corrispondono perfettamente al tipo
+      setPlans(data); 
     }
     setIsLoading(false);
   }, [router, supabase]);
@@ -74,15 +72,13 @@ export default function GymPage() {
           </div>
         </div>
       ) : (
-        // --- NUOVA UI CON ACCORDION ---
         <Accordion type="single" collapsible className="w-full space-y-4">
           {plans.map((plan) => (
-            <AccordionItem value={plan.id} key={plan.id} className="border rounded-lg">
+            <AccordionItem value={plan.id} key={plan.id} className="border rounded-lg bg-card">
               <AccordionTrigger className="px-6 text-lg font-semibold hover:no-underline">
                 {plan.name}
               </AccordionTrigger>
               <AccordionContent className="p-6 pt-0">
-                {/* Il nostro vecchio componente ora vive qui dentro */}
                 <WorkoutSelector 
                   plan={plan} 
                   onDeleteSuccess={fetchWorkoutPlans} 

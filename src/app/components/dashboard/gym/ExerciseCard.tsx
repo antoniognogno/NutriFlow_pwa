@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { SetInputRow, SetLog } from "./SetInputRow";
+import { SetInputRow, SetLog, UpdatableSetLogFields } from "./SetInputRow";
 import { Tables } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
 
@@ -21,8 +21,8 @@ export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardPro
 
   useEffect(() => {
     const initializeSets = async () => {
-      // 1. Recupera l'ultimo peso usato per questo esercizio
-      const { data: lastLog } = await createClient()
+      const supabase = createClient();
+      const { data: lastLog } = await supabase
         .from('exercise_logs')
         .select('weight_kg')
         .eq('user_id', userId)
@@ -33,7 +33,6 @@ export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardPro
 
       const lastWeight = lastLog?.weight_kg?.toString() || '';
 
-      // 2. Crea le serie iniziali con i dati pre-compilati
       const initialSets = Array.from({ length: exercise.target_sets || 3 }, (_, i) => ({
         set_number: i + 1,
         reps: exercise.target_reps || '',
@@ -42,15 +41,52 @@ export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardPro
       
       setSets(initialSets);
       setIsLoadingHistory(false);
-      onUpdateLogs(exercise.id, initialSets); // Comunica i dati iniziali al genitore
+      onUpdateLogs(exercise.id, initialSets);
     };
     
     initializeSets();
   }, [exercise, userId, onUpdateLogs]);
 
-  const updateSet = (index: number, field: keyof SetLog, value: string) => { /* ... (invariato) ... */ };
-  const addSet = () => { /* ... (invariato) ... */ };
-  const deleteSet = (index: number) => { /* ... (invariato) ... */ };
+  // --- LA FUNZIONE CORRETTA SENZA 'as any' ---
+  const updateSet = (index: number, field: UpdatableSetLogFields, value: string) => {
+    // Creiamo una copia dell'array di serie
+    const newSets = [...sets];
+    // Creiamo una copia dell'oggetto specifico che stiamo modificando
+    const setToUpdate = { ...newSets[index] };
+
+    // Usiamo una condizione esplicita, che TypeScript capisce
+    if (field === 'reps') {
+      setToUpdate.reps = value;
+    } else if (field === 'weight_kg') {
+      setToUpdate.weight_kg = value;
+    }
+
+    // Sostituiamo l'oggetto vecchio con quello aggiornato
+    newSets[index] = setToUpdate;
+    
+    setSets(newSets);
+    onUpdateLogs(exercise.id, newSets);
+  };
+
+  const addSet = () => {
+    const newSet: SetLog = {
+      set_number: sets.length + 1,
+      reps: sets[sets.length - 1]?.reps || exercise.target_reps || '',
+      weight_kg: sets[sets.length - 1]?.weight_kg || '',
+    };
+    const newSets = [...sets, newSet];
+    setSets(newSets);
+    onUpdateLogs(exercise.id, newSets);
+  };
+
+  const deleteSet = (index: number) => {
+    if (index < (exercise.target_sets || 0)) return;
+    
+    const newSets = sets.filter((_, i) => i !== index)
+      .map((set, i) => ({ ...set, set_number: i + 1 }));
+    setSets(newSets);
+    onUpdateLogs(exercise.id, newSets);
+  };
 
   return (
     <Card>
@@ -61,7 +97,6 @@ export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardPro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Etichette visibili solo su schermi grandi */}
         <div className="hidden sm:grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 sm:gap-4 px-[58px]">
             <Label className="text-xs text-muted-foreground text-center">Peso (kg)</Label>
             <Label className="text-xs text-muted-foreground text-center">Reps</Label>
@@ -72,12 +107,12 @@ export function ExerciseCard({ exercise, userId, onUpdateLogs }: ExerciseCardPro
         ) : (
           sets.map((set, index) => (
             <SetInputRow
-              key={index}
+              key={`${exercise.id}-set-${index}`} // Chiave più robusta
               set={set}
               index={index}
-              onUpdate={(field, value) => updateSet(index, field as keyof SetLog, value)}
-              onDelete={() => deleteSet(index)}
-              isDeletable={sets.length > 1}
+              onUpdate={updateSet}
+              onDelete={deleteSet}
+              isDeletable={index >= (exercise.target_sets || 0)}
             />
           ))
         )}
