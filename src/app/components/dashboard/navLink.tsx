@@ -3,11 +3,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, GlassWater, Settings, BookOpen } from "lucide-react";
+import { Home, GlassWater, Dumbbell, Settings, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
+  { name: 'Gym Tracker', href: '/dashboard/gym', icon: Dumbbell },
   { name: 'Water Tracker', href: '/dashboard/water', icon: GlassWater },
   { name: 'Ricette', href: '/dashboard/recipes', icon: BookOpen },
   { name: 'Impostazioni', href: '/dashboard/settings', icon: Settings },

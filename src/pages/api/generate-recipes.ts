@@ -85,8 +85,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         existingMeals, 
         mealToDiscard, 
         discardedMeals,
-        ingredients: customIngredients,
-        breakfast_preference: breakfastPreference,
       } = validatedBody as RegenerateBody;
 
 

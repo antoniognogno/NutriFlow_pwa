@@ -1,7 +1,6 @@
 'use client'
 
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
 export default function DashboardPage() {
