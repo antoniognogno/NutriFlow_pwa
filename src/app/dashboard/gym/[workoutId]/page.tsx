@@ -8,6 +8,7 @@ import { ExerciseCard } from "@/app/components/dashboard/gym/ExerciseCard";
 import { SetLog } from "@/app/components/dashboard/gym/SetInputRow";
 import { Button } from "@/components/ui/button";
 
+
 // Definiamo il tipo per i log raccolti, pronti per essere salvati
 type WorkoutSessionLogs = Record<string, SetLog[]>;
 
