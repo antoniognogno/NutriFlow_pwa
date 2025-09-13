@@ -244,13 +244,87 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_workout_plan: {
+        Args: { plan_id_param: string }
+        Returns: undefined
+      }
+      get_exercise_progression: {
+        Args: { p_exercise_name: string }
+        Returns: {
+          completed_date: string
+          max_weight: number
+        }[]
+      }
+      get_last_exercise_log: {
+        Args: { p_exercise_id: string }
+        Returns: Json
+      }
+      get_user_workout_plans: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_weekly_volume_trend: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          total_volume: number
+          week_start: string
+        }[]
+      }
+      get_workout_details: {
+        Args: { p_workout_id: string }
+        Returns: Json
+      }
+      get_workout_heatmap_data: {
+        Args: { end_date: string; start_date: string }
+        Returns: {
+          count: number
+          date: string
+        }[]
+      }
+      insert_exercise_logs: {
+        Args: { logs: Json }
+        Returns: undefined
+      }
+      insert_workout: {
+        Args: { p_name: string; p_plan_id: string }
+        Returns: string
+      }
+      insert_workout_exercises: {
+        Args: {
+          p_exercises: Database["public"]["CompositeTypes"]["exercise_insert_type"][]
+        }
+        Returns: undefined
+      }
+      log_workout_session: {
+        Args: { p_exercise_logs: Json; p_workout_id: string }
+        Returns: string
+      }
+      save_workout_session: {
+        Args: {
+          p_sets: Database["public"]["CompositeTypes"]["set_log_type"][]
+          p_workout_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
     }
     CompositeTypes: {
-      [_ in never]: never
+      exercise_insert_type: {
+        workout_id: string | null
+        exercise_name: string | null
+        target_sets: number | null
+        target_reps: string | null
+        order: number | null
+      }
+      set_log_type: {
+        workout_exercise_id: string | null
+        exercise_name: string | null
+        set_number: number | null
+        reps: number | null
+        weight_kg: number | null
+      }
     }
   }
 }
@@ -377,6 +451,8 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
+
 export type PlanWithWorkoutsAndExercises = {
   id: string
   name: string

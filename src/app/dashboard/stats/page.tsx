@@ -103,37 +103,43 @@ export default function StatsPage() {
             </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-6">
-          {weeklyData.length > 0 && <WeeklyVolumeChart data={weeklyData.map(item => ({...item, week_start: new Date(item.week_start).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })})).reverse()} colors={currentColors} />}
-
-          {distinctExercises.length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                  <Label htmlFor="exercise-select" className="shrink-0">Mostra progressione per:</Label>
-                  <Select value={selectedExercise} onValueChange={setSelectedExercise}>
-                    <SelectTrigger id="exercise-select" className="w-full sm:w-auto sm:min-w-[280px]">
-                      <SelectValue placeholder="Seleziona..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {distinctExercises.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {exerciseProgressData.length > 0 ? (
-                  <ExerciseProgressChart data={exerciseProgressData.map(item => ({...item, completed_date: new Date(item.completed_date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }) }))} exerciseName={selectedExercise} colors={currentColors} />
-                ) : (
-                  <div className="text-sm text-center text-muted-foreground h-[300px] flex items-center justify-center">
-                    <p>Nessun dato di progressione per questo esercizio.</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Colonna Sinistra (o prima su mobile) */}
+          <div className="lg:col-span-1">
+            {weeklyData.length > 0 && <WeeklyVolumeChart data={weeklyData} colors={currentColors} />}
+          </div>
+          
+          {/* Colonna Destra (o seconda su mobile) */}
+          <div className="space-y-6 lg:col-span-1">
+            {distinctExercises.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4 space-y-2 sm:space-y-0">
+                    <Label htmlFor="exercise-select" className="shrink-0">Mostra progressione per:</Label>
+                    <Select value={selectedExercise} onValueChange={setSelectedExercise}>
+                      <SelectTrigger id="exercise-select" className="w-full sm:w-[280px]">
+                        <SelectValue placeholder="Seleziona un esercizio..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {distinctExercises.map(ex => <SelectItem key={ex} value={ex}>{ex}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                </CardHeader>
+                <CardContent>
+                  {exerciseProgressData.length > 0 ? (
+                    <ExerciseProgressChart data={exerciseProgressData} exerciseName={selectedExercise} colors={currentColors} />
+                  ) : (
+                    <div className="text-sm text-center text-muted-foreground h-[350px] flex items-center justify-center">
+                      <p>Nessun dato di progressione per questo esercizio.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-          {heatmapData.length > 0 && <WorkoutHeatmap data={heatmapData} />}
+            {heatmapData.length > 0 && <WorkoutHeatmap data={heatmapData} />}
+          </div>
         </div>
       )}
     </div>
