@@ -9,7 +9,6 @@ export interface WeeklyVolumeData {
   total_volume: number;
 }
 
-// 1. Definiamo le props per i colori
 interface WeeklyVolumeChartProps {
   data: WeeklyVolumeData[];
   colors: {
@@ -24,6 +23,7 @@ interface WeeklyVolumeChartProps {
 
 export function WeeklyVolumeChart({ data, colors }: WeeklyVolumeChartProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
+
   const maxVolume = Math.max(...data.map(item => item.total_volume));
   const yAxisDomain = [0, Math.ceil((maxVolume * 1.1) / 100) * 100];
 
@@ -36,12 +36,11 @@ export function WeeklyVolumeChart({ data, colors }: WeeklyVolumeChartProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={350}>
+        <ResponsiveContainer width="100%" height={300}>
           <BarChart 
             data={data} 
-            margin={{ top: 5, right: isMobile ? 0 : 20, bottom: 5, left: isMobile ? -20 : 0 }}
+            margin={{ top: 5, right: isMobile ? 5 : 20, bottom: isMobile ? 25 : 5, left: -20 }}
           >
-            {/* 2. Usiamo i colori ricevuti come props */}
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
             <XAxis 
               dataKey="week_start" 
@@ -49,7 +48,7 @@ export function WeeklyVolumeChart({ data, colors }: WeeklyVolumeChartProps) {
               tickLine={false} 
               axisLine={false} 
               stroke={colors.text}
-              angle={isMobile ? -35 : 0}
+              angle={isMobile ? -45 : 0}
               textAnchor={isMobile ? "end" : "middle"}
               height={isMobile ? 50 : 30}
             />
@@ -78,8 +77,8 @@ export function WeeklyVolumeChart({ data, colors }: WeeklyVolumeChartProps) {
             <Bar 
               dataKey="total_volume" 
               fill={colors.bar}
-              radius={[4, 4, 0, 0]}
-              barSize={isMobile ? 20 : 30}
+              radius={[4, 4, 0, 0]} 
+              barSize={isMobile ? 10 : 20}
             />
           </BarChart>
         </ResponsiveContainer>

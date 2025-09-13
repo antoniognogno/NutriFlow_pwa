@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, GripVertical } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ExerciseSearchCombobox } from "./ExerciseSearchCombobox";
 
 // Definiamo i tipi per il nostro form dinamico
 interface ExerciseForm {
@@ -25,9 +27,9 @@ interface WorkoutForm {
 
 // Stato iniziale pre-compilato
 const defaultWorkouts: WorkoutForm[] = [
-    { name: "Petto/Tricipiti/Spalle", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
-    { name: "Schiena/Bicipiti", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
-    { name: "Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8" }] }
+    { name: "Giorno A: Spinta (Petto/Tricipiti/Spalle)", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
+    { name: "Giorno B: Tirata (Schiena/Bicipiti)", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
+    { name: "Giorno C: Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8" }] }
 ];
 
 const getInitialState = () => ({
@@ -61,8 +63,8 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
     setWorkouts([...workouts, { name: "", exercises: [{ exercise_name: "", target_sets: "", target_reps: "" }] }]);
   };
   
-  const removeWorkout = (index: number) => {
-    setWorkouts(workouts.filter((_, i) => i !== index));
+  const removeWorkout = (indexToRemove: number) => {
+    setWorkouts(workouts.filter((_, index) => index !== indexToRemove));
   };
   
   const handleExerciseChange = (workoutIndex: number, exIndex: number, field: keyof ExerciseForm, value: string) => {
@@ -77,9 +79,9 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
     setWorkouts(newWorkouts);
   };
   
-  const removeExercise = (workoutIndex: number, exIndex: number) => {
+  const removeExercise = (workoutIndex: number, exIndexToRemove: number) => {
     const newWorkouts = [...workouts];
-    newWorkouts[workoutIndex].exercises = newWorkouts[workoutIndex].exercises.filter((_, i) => i !== exIndex);
+    newWorkouts[workoutIndex].exercises = newWorkouts[workoutIndex].exercises.filter((_, index) => index !== exIndexToRemove);
     setWorkouts(newWorkouts);
   };
 
@@ -98,6 +100,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
       const { data: plan, error: planError } = await supabase
         .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
       if (planError) throw planError;
+      if (!plan) throw new Error("Creazione del piano fallita.");
 
       for (const workoutData of workouts) {
         if (!workoutData.name.trim()) continue;
@@ -106,6 +109,7 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
           .rpc('insert_workout', { p_plan_id: plan.id, p_name: workoutData.name });
         
         if (workoutError) throw workoutError;
+        if (!workoutId) continue;
 
         const exercisesToInsert = workoutData.exercises
           .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
@@ -160,52 +164,87 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
             Nuova Scheda
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Crea una Nuova Scheda</DialogTitle>
             <DialogDescription>
-              Definisci i giorni di allenamento e gli esercizi. Puoi partire da questo modello.
+              Definisci i giorni di allenamento e gli esercizi.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 py-4">
+          
+          <div className="flex-1 overflow-y-auto pr-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="plan-name">Nome Scheda</Label>
               <Input id="plan-name" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Es: La mia scheda di forza" />
             </div>
+            
             <Separator />
-            <div className="space-y-4">
+            
+            <Accordion type="single" collapsible className="w-full" defaultValue="item-0">
               {workouts.map((workout, wIndex) => (
-                <div key={wIndex} className="space-y-4 rounded-md border p-4">
-                  <div className="flex items-center justify-between">
-                    <Label>Giorno {wIndex + 1}</Label>
-                    <Button variant="ghost" size="icon" onClick={() => removeWorkout(wIndex)}><Trash2 className="h-4 w-4" /></Button>
+                <AccordionItem value={`item-${wIndex}`} key={wIndex} className="border-none">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AccordionTrigger className="flex-1 rounded-md border p-3 text-base font-medium hover:no-underline [&>svg]:hidden">
+                      <div className="flex items-center gap-2 w-full">
+                          <GripVertical className="h-5 w-5 text-muted-foreground mr-2 shrink-0 cursor-grab" />
+                          <Input 
+                              placeholder={`Giorno ${wIndex + 1}: Nome Allenamento`}
+                              value={workout.name} 
+                              onChange={(e) => handleWorkoutChange(wIndex, e.target.value)} 
+                              className="flex-1 bg-transparent border-none p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                              onClick={(e) => e.stopPropagation()}
+                          />
+                      </div>
+                    </AccordionTrigger>
+                    <Button variant="outline" size="icon" className="shrink-0 group" onClick={(e) => { e.stopPropagation(); removeWorkout(wIndex); }}>
+                        <Trash2 className="h-4 w-4 text-muted-foreground group-hover:text-destructive" />
+                    </Button>
                   </div>
-                  <Input placeholder="Nome Allenamento (es: Giorno A: Spinta)" value={workout.name} onChange={(e) => handleWorkoutChange(wIndex, e.target.value)} />
-                  
-                  <div className="space-y-2 pl-4">
+
+                  <AccordionContent className="space-y-4 pt-2 pl-4 border-l-2 ml-4">
                     {workout.exercises.map((ex, exIndex) => (
-                      <div key={exIndex} className="space-y-2">
-                        <div className="flex items-center gap-2">
-                           <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                           <Input placeholder="Nome Esercizio" value={ex.exercise_name} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'exercise_name', e.target.value)} />
-                           <Button variant="ghost" size="icon" onClick={() => removeExercise(wIndex, exIndex)}><Trash2 className="h-4 w-4" /></Button>
+                      <div key={exIndex} className="space-y-3 rounded-md border p-3 bg-muted/50">
+                        <div className="flex items-center justify-between">
+                            <Label className="font-semibold">Esercizio {exIndex + 1}</Label>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeExercise(wIndex, exIndex)}>
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
                         </div>
-                        <div className="flex items-center gap-2 pl-6">
-                            <Input className="flex-1 min-w-[60px] text-center" placeholder="Serie" value={ex.target_sets} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_sets', e.target.value)} />
-                            <span className="text-muted-foreground font-semibold">x</span>
-                            <Input className="flex-1 min-w-[60px] text-center" placeholder="Reps" value={ex.target_reps} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_reps', e.target.value)} />
+                        <div className="grid gap-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Nome Esercizio</Label>
+                                <ExerciseSearchCombobox
+                                    value={ex.exercise_name}
+                                    onSelect={(value) => handleExerciseChange(wIndex, exIndex, 'exercise_name', value)}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor={`sets-${wIndex}-${exIndex}`} className="text-xs">Serie</Label>
+                                    <Input id={`sets-${wIndex}-${exIndex}`} className="text-center" placeholder="Es. 3" value={ex.target_sets} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_sets', e.target.value)} />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor={`reps-${wIndex}-${exIndex}`} className="text-xs">Reps</Label>
+                                    <Input id={`reps-${wIndex}-${exIndex}`} className="text-center" placeholder="Es. 8-10" value={ex.target_reps} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_reps', e.target.value)} />
+                                </div>
+                            </div>
                         </div>
                       </div>
                     ))}
-                    <Button variant="outline" size="sm" onClick={() => addExercise(wIndex)}>Aggiungi Esercizio</Button>
-                  </div>
-                </div>
+                    <Button variant="outline" size="sm" onClick={() => addExercise(wIndex)}>
+                      <PlusCircle className="mr-2 h-4 w-4"/>
+                      Aggiungi Esercizio
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-              <Button variant="secondary" onClick={addWorkout}>Aggiungi Giorno di Allenamento</Button>
-            </div>
+            </Accordion>
+            
+            <Button variant="secondary" onClick={addWorkout}>Aggiungi Giorno</Button>
             {error && <p className="text-sm text-red-500">{error}</p>}
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="mt-auto pt-4 border-t">
             <DialogClose asChild><Button variant="ghost">Annulla</Button></DialogClose>
             <Button onClick={handleSavePlan} disabled={isSaving}>
               {isSaving ? "Salvataggio..." : "Salva Scheda"}
@@ -213,12 +252,12 @@ export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      
       <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Scheda Salvata!</AlertDialogTitle>
-            <AlertDialogDescription>La tua nuova scheda di allenamento è stata creata con successo e ora è visibile nella tua dashboard.</AlertDialogDescription>
+            <AlertDialogDescription>La tua nuova scheda di allenamento è stata creata con successo.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogAction onClick={handleSuccessDialogClose}>Fantastico!</AlertDialogAction>
         </AlertDialogContent>

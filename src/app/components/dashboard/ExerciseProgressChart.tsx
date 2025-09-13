@@ -1,7 +1,7 @@
 'use client'
 
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 export interface ExerciseProgressData {
   completed_date: string;
@@ -11,40 +11,66 @@ export interface ExerciseProgressData {
 interface ExerciseProgressChartProps {
   data: ExerciseProgressData[];
   exerciseName: string;
-  colors: { line: string; grid: string; text: string; /*...altri colori tooltip...*/ };
+  colors: {
+    line: string;
+    grid: string;
+    text: string;
+    tooltipBg: string;
+    tooltipBorder: string;
+    tooltipText: string;
+  };
 }
 
 export function ExerciseProgressChart({ data, exerciseName, colors }: ExerciseProgressChartProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)")
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Progressione: {exerciseName}</CardTitle>
-        <CardDescription>
-          Andamento del peso massimo sollevato nel tempo.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
-            <XAxis dataKey="completed_date" fontSize={12} tickLine={false} axisLine={false} stroke={colors.text} />
-            <YAxis unit=" kg" width={80} fontSize={12} tickLine={false} axisLine={false} stroke={colors.text} />
-            <Tooltip
-              cursor={{ stroke: colors.line, strokeWidth: 2, strokeDasharray: '3 3' }}
-              contentStyle={{ /* ... stili tooltip ... */ }}
-              formatter={(value: number) => [`${value.toLocaleString()} kg`, "Peso Massimo"]}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="max_weight" 
-              stroke={colors.line} 
-              strokeWidth={2} 
-              dot={{ r: 4 }} 
-              activeDot={{ r: 8 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart 
+        data={data} 
+        margin={{ top: 5, right: isMobile ? 5 : 20, bottom: isMobile ? 25 : 5, left: -20 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
+        <XAxis 
+          dataKey="completed_date" 
+          fontSize={12} 
+          tickLine={false} 
+          axisLine={false} 
+          stroke={colors.text}
+          angle={isMobile ? -45 : 0}
+          textAnchor={isMobile ? "end" : "middle"}
+          height={isMobile ? 50 : 30}
+        />
+        {!isMobile && (
+          <YAxis 
+            unit=" kg" 
+            width={80} 
+            fontSize={12} 
+            tickLine={false} 
+            axisLine={false} 
+            stroke={colors.text}
+          />
+        )}
+        <Tooltip
+          cursor={{ stroke: colors.line, strokeWidth: 1.5, strokeDasharray: '3 3' }}
+          contentStyle={{
+            backgroundColor: colors.tooltipBg,
+            borderColor: colors.tooltipBorder,
+            color: colors.tooltipText,
+            borderRadius: 'var(--radius)',
+          }}
+          formatter={(value: number) => [`${value.toLocaleString()} kg`, "Peso Massimo"]}
+          labelFormatter={(label) => `Data: ${label}`}
+        />
+        <Line 
+          type="monotone" 
+          dataKey="max_weight" 
+          stroke={colors.line}
+          strokeWidth={2} 
+          dot={{ r: 4, fill: colors.line }}
+          activeDot={{ r: 8, stroke: colors.line, fill: colors.tooltipBg }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
   );
 }

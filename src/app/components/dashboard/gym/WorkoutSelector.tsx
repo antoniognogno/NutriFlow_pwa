@@ -75,7 +75,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
           </AlertDialogHeader>
           <div className="my-4 space-y-2">
             <p className="text-sm text-muted-foreground">
-              Per confermare, scrivi <strong className="text-foreground">CONFERMA</strong> qui sotto.
+              Per confermare, scrivi <strong className="text-foreground">{plan.name}</strong> qui sotto.
             </p>
             <Input 
               value={confirmText}
@@ -88,7 +88,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
             <AlertDialogCancel onClick={() => setConfirmText("")}>Annulla</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeletePlan}
-              disabled={confirmText !== "CONFERMA" || isDeleting}
+              disabled={confirmText !== plan.name || isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Eliminazione..." : "Sì, elimina questa scheda"}

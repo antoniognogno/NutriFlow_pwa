@@ -1,11 +1,9 @@
 'use client'
 
-// --- CORREZIONE QUI ---
-import React from 'react';
 import HeatMap from '@uiw/react-heat-map';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTheme } from 'next-themes';
-// import { Tooltip } from 'recharts'; // RIMOSSO: Tooltip di Recharts non compatibile
+import { Tooltip as ReactTooltip } from 'recharts';
 
 export interface HeatmapData {
   date: string; // YYYY-MM-DD
@@ -21,7 +19,6 @@ export function WorkoutHeatmap({ data }: WorkoutHeatmapProps) {
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - 5);
   
-  // Convertiamo i dati nel formato richiesto dalla libreria (YYYY/MM/DD)
   const formattedData = data.map(item => ({...item, date: item.date.replace(/-/g, '/')}));
 
   return (
@@ -32,46 +29,21 @@ export function WorkoutHeatmap({ data }: WorkoutHeatmapProps) {
           Una panoramica dei tuoi giorni di allenamento negli ultimi mesi.
         </CardDescription>
       </CardHeader>
-      <CardContent className="overflow-x-auto p-4">
-        <HeatMap
-          value={formattedData}
-          startDate={startDate}
-          width={650}
-          height={120}
-          // Colori dinamici basati sul tema
-          panelColors={{
-            0: theme === 'dark' ? 'hsl(var(--muted) / 0.5)' : 'hsl(var(--muted))',
-            1: 'hsl(var(--primary))',
-          }}
-          rectProps={{
-            rx: 3, // Bordi arrotondati
-          }}
-          legendCellSize={0} // Nasconde la legenda
-          // Aggiungiamo un tooltip personalizzato al passaggio del mouse
-          rectRender={(props, data) => {
-            const [show, setShow] = React.useState(false);
-            if (!data.count) return <rect {...props} />;
-            return (
-              <g>
-                <rect
-                  {...props}
-                  onMouseEnter={() => setShow(true)}
-                  onMouseLeave={() => setShow(false)}
-                />
-                {show && (
-                  <foreignObject x={props.x} y={typeof props.y === 'number' ? props.y - 40 : 0} width={100} height={40}>
-                    <div
-                      className="bg-popover text-popover-foreground text-xs p-2 rounded-md border"
-                      style={{ pointerEvents: 'none' }}
-                    >
-                      {data.count} allenamento il {new Date(data.date).toLocaleDateString('it-IT')}
-                    </div>
-                  </foreignObject>
-                )}
-              </g>
-            );
-          }}
-        />
+      <CardContent>
+        <div className="overflow-x-auto pb-2 -ml-4">
+          <HeatMap
+            value={formattedData}
+            startDate={startDate}
+            panelColors={{
+              0: theme === 'dark' ? 'hsl(var(--muted) / 0.5)' : 'hsl(var(--muted))',
+              1: 'hsl(var(--primary))',
+            }}
+            rectProps={{ rx: 3 }}
+            legendCellSize={0}
+            // La libreria Tooltip di Recharts non funziona bene qui,
+            // la libreria heatmap ha un suo tooltip di default (HTML title) che è sufficiente.
+          />
+        </div>
       </CardContent>
     </Card>
   );
