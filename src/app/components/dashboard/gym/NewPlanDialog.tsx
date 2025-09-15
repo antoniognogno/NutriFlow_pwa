@@ -1,19 +1,18 @@
 'use client'
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Trash2, GripVertical } from "lucide-react";
+import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ExerciseSearchCombobox } from "./ExerciseSearchCombobox";
+import type { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types";
+import { toast } from "sonner";
 
-// Definiamo i tipi per il nostro form dinamico
+// --- TIPI PER LO STATO INTERNO DEL FORM ---
 interface ExerciseForm {
   exercise_name: string;
   target_sets: string;
@@ -25,243 +24,259 @@ interface WorkoutForm {
   exercises: ExerciseForm[];
 }
 
-// Stato iniziale pre-compilato
-const defaultWorkouts: WorkoutForm[] = [
-    { name: "Giorno A: Spinta (Petto/Tricipiti/Spalle)", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
-    { name: "Giorno B: Tirata (Schiena/Bicipiti)", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
-    { name: "Giorno C: Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8" }] }
-];
-
-const getInitialState = () => ({
-    planName: `La Mia Nuova Scheda`,
-    workouts: JSON.parse(JSON.stringify(defaultWorkouts))
+// --- STATO INIZIALE PER LA MODALITÀ 'CREATE' ---
+const getInitialCreateState = () => ({
+    planName: `La mia Nuova Scheda`,
+    workouts: [
+        { name: "Spinta (Petto/Tricipiti/Spalle)", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
+        { name: "Tirata (Schiena/Bicipiti)", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
+        { name: "Gambe", exercises: [{ exercise_name: "Squat con Bilanciere", target_sets: "4", target_reps: "8" }] }
+    ]
 });
 
+// --- PROPS DEL COMPONENTE ---
 interface NewPlanDialogProps {
+  mode: 'create' | 'edit';
+  planToEdit?: PlanWithWorkoutsAndExercises;
   onSaveSuccess: () => void;
 }
 
-export function NewPlanDialog({ onSaveSuccess }: NewPlanDialogProps) {
-  const router = useRouter();
+export function NewPlanDialog({ mode, planToEdit, onSaveSuccess }: NewPlanDialogProps) {
   const supabase = createClient();
   
   const [open, setOpen] = useState(false);
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [planName, setPlanName] = useState(getInitialState().planName);
-  const [workouts, setWorkouts] = useState<WorkoutForm[]>(getInitialState().workouts);
+  const [planName, setPlanName] = useState("");
+  const [workouts, setWorkouts] = useState<WorkoutForm[]>([]);
+  const [openAccordionItems, setOpenAccordionItems] = useState<string[]>([]);
 
-  const handleWorkoutChange = (index: number, value: string) => {
-    const newWorkouts = [...workouts];
-    newWorkouts[index].name = value;
-    setWorkouts(newWorkouts);
-  };
+  useEffect(() => {
+    if (open) {
+      if (mode === 'edit' && planToEdit) {
+        setPlanName(planToEdit.name);
+        const editableWorkouts = planToEdit.workouts.map(workout => ({
+          name: workout.name,
+          // <<< CORREZIONE DATABASE SCHEMA: Il tipo custom usa `exercises`
+          exercises: Array.isArray(workout.exercises)
+            ? workout.exercises.map(exercise => ({
+                exercise_name: exercise.exercise_name,
+                target_sets: String(exercise.target_sets || ''),
+                target_reps: String(exercise.target_reps || ''),
+              }))
+            : [],
+        }));
+        setWorkouts(editableWorkouts);
+        setOpenAccordionItems(editableWorkouts.map((_, index) => `item-${index}`));
+      } else {
+        const initialState = getInitialCreateState();
+        setPlanName(initialState.planName);
+        setWorkouts(initialState.workouts);
+        setOpenAccordionItems(['item-0']);
+      }
+      setError(null);
+    }
+  }, [open, mode, planToEdit]);
 
-  const addWorkout = () => {
-    setWorkouts([...workouts, { name: "", exercises: [{ exercise_name: "", target_sets: "", target_reps: "" }] }]);
-  };
-  
-  const removeWorkout = (indexToRemove: number) => {
-    setWorkouts(workouts.filter((_, index) => index !== indexToRemove));
-  };
-  
-  const handleExerciseChange = (workoutIndex: number, exIndex: number, field: keyof ExerciseForm, value: string) => {
-    const newWorkouts = [...workouts];
-    (newWorkouts[workoutIndex].exercises[exIndex] as any)[field] = value;
-    setWorkouts(newWorkouts);
-  };
+  // --- HANDLERS (invariati) ---
+  const handleWorkoutChange = (index: number, newName: string) => { const updatedWorkouts = [...workouts]; updatedWorkouts[index].name = newName; setWorkouts(updatedWorkouts); };
+  const handleExerciseChange = (workoutIndex: number, exerciseIndex: number, field: keyof ExerciseForm, value: string) => { const updatedWorkouts = [...workouts]; updatedWorkouts[workoutIndex].exercises[exerciseIndex][field] = value; setWorkouts(updatedWorkouts); };
+  const handleAddExercise = (workoutIndex: number) => { const updatedWorkouts = [...workouts]; updatedWorkouts[workoutIndex].exercises.push({ exercise_name: "", target_sets: "3", target_reps: "10" }); setWorkouts(updatedWorkouts); };
+  const handleRemoveExercise = (workoutIndex: number, exerciseIndex: number) => { const updatedWorkouts = [...workouts]; updatedWorkouts[workoutIndex].exercises.splice(exerciseIndex, 1); setWorkouts(updatedWorkouts); };
+  const handleAddWorkout = () => { setWorkouts([...workouts, { name: "Nuovo Allenamento", exercises: [{ exercise_name: "", target_sets: "3", target_reps: "10" }] }]); };
+  const handleRemoveWorkout = (workoutIndex: number) => { const updatedWorkouts = [...workouts]; updatedWorkouts.splice(workoutIndex, 1); setWorkouts(updatedWorkouts); };
 
-  const addExercise = (workoutIndex: number) => {
-    const newWorkouts = [...workouts];
-    newWorkouts[workoutIndex].exercises.push({ exercise_name: "", target_sets: "", target_reps: "" });
-    setWorkouts(newWorkouts);
-  };
-  
-  const removeExercise = (workoutIndex: number, exIndexToRemove: number) => {
-    const newWorkouts = [...workouts];
-    newWorkouts[workoutIndex].exercises = newWorkouts[workoutIndex].exercises.filter((_, index) => index !== exIndexToRemove);
-    setWorkouts(newWorkouts);
-  };
-
-  const handleSavePlan = async () => {
+  // --- LOGICA DI SALVATAGGIO ---
+  const handleSubmit = async () => {
     setIsSaving(true);
     setError(null);
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user || !planName.trim()) {
-      setError("Il nome della scheda è obbligatorio.");
-      setIsSaving(false);
-      return;
-    }
+    if (!planName.trim()) { setError("Il nome della scheda non può essere vuoto."); setIsSaving(false); return; }
 
     try {
-      const { data: plan, error: planError } = await supabase
-        .from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
-      if (planError) throw planError;
-      if (!plan) throw new Error("Creazione del piano fallita.");
-
-      for (const workoutData of workouts) {
-        if (!workoutData.name.trim()) continue;
-
-        const { data: workoutId, error: workoutError } = await supabase
-          .rpc('insert_workout', { p_plan_id: plan.id, p_name: workoutData.name });
-        
-        if (workoutError) throw workoutError;
-        if (!workoutId) continue;
-
-        const exercisesToInsert = workoutData.exercises
-          .filter(ex => ex.exercise_name.trim() && ex.target_sets.trim() && ex.target_reps.trim())
-          .map((ex, exIndex) => ({
-            workout_id: workoutId,
-            exercise_name: ex.exercise_name,
-            target_sets: parseInt(ex.target_sets, 10) || null,
-            target_reps: ex.target_reps,
-            order: exIndex + 1,
-          }));
-
-        if (exercisesToInsert.length > 0) {
-          const { error: exercisesError } = await supabase.rpc('insert_workout_exercises', { p_exercises: exercisesToInsert });
-          if (exercisesError) throw exercisesError;
-        }
-      }
+      if (mode === 'create') await handleCreatePlan();
+      else if (mode === 'edit' && planToEdit) await handleUpdatePlan();
       
+      toast.success(`Scheda ${mode === 'create' ? 'creata' : 'aggiornata'} con successo!`);
+      onSaveSuccess();
       setOpen(false);
-      setShowSuccessDialog(true);
-
-    } catch (err: any) {
-      setError("Errore durante il salvataggio: " + err.message);
+    } catch (error: any) {
+      console.error("Dettagli errore salvataggio:", error);
+      const errorMessage = error.message || "Violazione della policy di sicurezza o errore del database.";
+      setError(errorMessage);
+      toast.error("Salvataggio fallito", { description: errorMessage });
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSuccessDialogClose = () => {
-    setShowSuccessDialog(false);
-    onSaveSuccess();
-    const initialState = getInitialState();
-    setPlanName(initialState.planName);
-    setWorkouts(initialState.workouts);
-  };
-  
-  const resetFormOnOpen = (isOpen: boolean) => {
-      if(isOpen) {
-          const initialState = getInitialState();
-          setPlanName(initialState.planName);
-          setWorkouts(initialState.workouts);
-          setError(null);
+  const handleCreatePlan = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Utente non autenticato.");
+
+    // <<< CORREZIONE DATABASE SCHEMA: `workout_plans`
+    const { data: planData, error: planError } = await supabase.from('workout_plans').insert({ name: planName, user_id: user.id }).select('id').single();
+    if (planError) throw planError;
+    if (!planData) throw new Error("Creazione del piano fallita.");
+
+    for (const workout of workouts) {
+      if (!workout.name.trim()) continue;
+      // <<< CORREZIONE DATABASE SCHEMA: `workouts` e `plan_id`
+      const { data: workoutData, error: workoutError } = await supabase.from('workouts').insert({ name: workout.name, plan_id: planData.id }).select('id').single();
+      if (workoutError) throw workoutError;
+      if (!workoutData) throw new Error("Creazione del workout fallita.");
+      
+      const exercisesToInsert = workout.exercises.filter(ex => ex.exercise_name.trim()).map((ex, index) => ({
+        // <<< CORREZIONE DATABASE SCHEMA: `workout_exercises`, `workout_id`, `target_reps` è text
+        workout_id: workoutData.id,
+        exercise_name: ex.exercise_name,
+        target_sets: parseInt(ex.target_sets, 10) || null,
+        target_reps: ex.target_reps, // È già una stringa, va bene così
+        order: index + 1,
+      }));
+
+      if (exercisesToInsert.length > 0) {
+        // <<< CORREZIONE DATABASE SCHEMA: `workout_exercises`
+        const { error: exerciseError } = await supabase.from('workout_exercises').insert(exercisesToInsert);
+        if (exerciseError) throw exerciseError;
       }
-      setOpen(isOpen);
+    }
+  };
+
+  const handleUpdatePlan = async () => {
+    if (!planToEdit) throw new Error("Dati della scheda da modificare non trovati.");
+
+    // <<< CORREZIONE DATABASE SCHEMA: `workout_plans`
+    if (planName !== planToEdit.name) {
+      const { error: planUpdateError } = await supabase.from('workout_plans').update({ name: planName }).eq('id', planToEdit.id);
+      if (planUpdateError) throw planUpdateError;
+    }
+    
+    // Per l'aggiornamento, la strategia "Delete & Replace" è la più semplice.
+    // L'ordine è importante: prima i figli (`workout_exercises`), poi i padri (`workouts`).
+    
+    // <<< CORREZIONE DATABASE SCHEMA: `workout_exercises` e `workout_id`
+    // Dobbiamo cancellare tutti gli esercizi di tutti i workout di questo piano
+    const workoutIds = planToEdit.workouts.map(w => w.id);
+    if (workoutIds.length > 0) {
+      const { error: deleteExercisesError } = await supabase.from('workout_exercises').delete().in('workout_id', workoutIds);
+      if (deleteExercisesError) throw deleteExercisesError;
+    }
+    
+    // <<< CORREZIONE DATABASE SCHEMA: `workouts` e `plan_id`
+    const { error: deleteWorkoutsError } = await supabase.from('workouts').delete().eq('plan_id', planToEdit.id);
+    if (deleteWorkoutsError) throw deleteWorkoutsError;
+
+    // Ora reinseriamo tutto come nella funzione di creazione
+    for (const workout of workouts) {
+      if (!workout.name.trim()) continue;
+
+      // <<< CORREZIONE DATABASE SCHEMA: `workouts`
+      const { data: workoutData, error: workoutError } = await supabase.from('workouts').insert({ name: workout.name, plan_id: planToEdit.id }).select('id').single();
+      if (workoutError) throw workoutError;
+      if (!workoutData) throw new Error("Reinserimento workout fallito.");
+
+      const exercisesToInsert = workout.exercises.filter(ex => ex.exercise_name.trim()).map((ex, index) => ({
+        // <<< CORREZIONE DATABASE SCHEMA: `workout_exercises`, `workout_id`
+        workout_id: workoutData.id,
+        exercise_name: ex.exercise_name,
+        target_sets: parseInt(ex.target_sets, 10) || null,
+        target_reps: ex.target_reps,
+        order: index + 1,
+      }));
+
+      if (exercisesToInsert.length > 0) {
+        // <<< CORREZIONE DATABASE SCHEMA: `workout_exercises`
+        const { error: exerciseError } = await supabase.from('workout_exercises').insert(exercisesToInsert);
+        if (exerciseError) throw exerciseError;
+      }
+    }
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={resetFormOnOpen}>
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Nuova Scheda
-          </Button>
+          {mode === 'create' ? (
+            <Button><PlusCircle className="mr-2 h-4 w-4" />Nuova Scheda</Button>
+          ) : (
+            <Button variant="ghost" disabled size="icon" className="h-7 w-7"><Pencil className="h-4 w-4" /></Button>
+          )}
         </DialogTrigger>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Crea una Nuova Scheda</DialogTitle>
-            <DialogDescription>
-              Definisci i giorni di allenamento e gli esercizi.
-            </DialogDescription>
+            <DialogTitle>{mode === 'create' ? 'Crea una Nuova Scheda' : 'Modifica Scheda'}</DialogTitle>
+            <DialogDescription>Definisci i giorni di allenamento e gli esercizi per il tuo piano.</DialogDescription>
           </DialogHeader>
-          
           <div className="flex-1 overflow-y-auto pr-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="plan-name">Nome Scheda</Label>
               <Input id="plan-name" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Es: La mia scheda di forza" />
             </div>
-            
             <Separator />
-            
-            <Accordion type="single" collapsible className="w-full" defaultValue="item-0">
+            <Accordion type="multiple" className="w-full" value={openAccordionItems} onValueChange={setOpenAccordionItems}>
               {workouts.map((workout, wIndex) => (
-                <AccordionItem value={`item-${wIndex}`} key={wIndex} className="border-none">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AccordionTrigger className="flex-1 rounded-md border p-3 text-base font-medium hover:no-underline [&>svg]:hidden">
-                      <div className="flex items-center gap-2 w-full">
-                          <GripVertical className="h-5 w-5 text-muted-foreground mr-2 shrink-0 cursor-grab" />
-                          <Input 
-                              placeholder={`Giorno ${wIndex + 1}: Nome Allenamento`}
-                              value={workout.name} 
-                              onChange={(e) => handleWorkoutChange(wIndex, e.target.value)} 
-                              className="flex-1 bg-transparent border-none p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                              onClick={(e) => e.stopPropagation()}
-                          />
-                      </div>
+                <AccordionItem value={`item-${wIndex}`} key={wIndex}>
+                  <div className="flex items-center w-full">
+                    <AccordionTrigger className="flex-1 hover:no-underline p-2 rounded-md">
+                        <Input
+                            value={workout.name}
+                            onChange={(e) => handleWorkoutChange(wIndex, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-semibold text-base border-none bg-transparent focus-visible:ring-0 p-0 h-auto w-full"
+                            placeholder="Nome Allenamento (es. Push Day)"
+                        />
                     </AccordionTrigger>
-                    <Button variant="outline" size="icon" className="shrink-0 group" onClick={(e) => { e.stopPropagation(); removeWorkout(wIndex); }}>
-                        <Trash2 className="h-4 w-4 text-muted-foreground group-hover:text-destructive" />
+                    <Button variant="ghost" size="icon" onClick={() => handleRemoveWorkout(wIndex)} className="mr-2 shrink-0">
+                        <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>
-
                   <AccordionContent className="space-y-4 pt-2 pl-4 border-l-2 ml-4">
-                    {workout.exercises.map((ex, exIndex) => (
-                      <div key={exIndex} className="space-y-3 rounded-md border p-3 bg-muted/50">
-                        <div className="flex items-center justify-between">
-                            <Label className="font-semibold">Esercizio {exIndex + 1}</Label>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeExercise(wIndex, exIndex)}>
-                                <Trash2 className="h-4 w-4" />
+                    {workout.exercises.map((exercise, exIndex) => (
+                      <div key={exIndex} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <Input
+                            placeholder="Nome Esercizio"
+                            value={exercise.exercise_name}
+                            onChange={(e) => handleExerciseChange(wIndex, exIndex, 'exercise_name', e.target.value)}
+                            className="flex-grow"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              placeholder="Serie"
+                              value={exercise.target_sets}
+                              onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_sets', e.target.value)}
+                              className="flex-1 sm:flex-initial sm:w-20"
+                            />
+                            <Input
+                              type="text" // <<<<<<< MODIFICA IMPORTANTE, target_reps è di tipo TEXT
+                              placeholder="Reps"
+                              value={exercise.target_reps}
+                              onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_reps', e.target.value)}
+                              className="flex-1 sm:flex-initial sm:w-20"
+                            />
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveExercise(wIndex, exIndex)}>
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                        </div>
-                        <div className="grid gap-4">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">Nome Esercizio</Label>
-                                <ExerciseSearchCombobox
-                                    value={ex.exercise_name}
-                                    onSelect={(value) => handleExerciseChange(wIndex, exIndex, 'exercise_name', value)}
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor={`sets-${wIndex}-${exIndex}`} className="text-xs">Serie</Label>
-                                    <Input id={`sets-${wIndex}-${exIndex}`} className="text-center" placeholder="Es. 3" value={ex.target_sets} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_sets', e.target.value)} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor={`reps-${wIndex}-${exIndex}`} className="text-xs">Reps</Label>
-                                    <Input id={`reps-${wIndex}-${exIndex}`} className="text-center" placeholder="Es. 8-10" value={ex.target_reps} onChange={(e) => handleExerciseChange(wIndex, exIndex, 'target_reps', e.target.value)} />
-                                </div>
-                            </div>
-                        </div>
+                          </div>
                       </div>
                     ))}
-                    <Button variant="outline" size="sm" onClick={() => addExercise(wIndex)}>
-                      <PlusCircle className="mr-2 h-4 w-4"/>
-                      Aggiungi Esercizio
+                     <Button variant="outline" size="sm" onClick={() => handleAddExercise(wIndex)}>
+                      <PlusCircle className="mr-2 h-4 w-4" /> Aggiungi Esercizio
                     </Button>
                   </AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
-            
-            <Button variant="secondary" onClick={addWorkout}>Aggiungi Giorno</Button>
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            <Button variant="secondary" onClick={handleAddWorkout}>Aggiungi Giorno di Allenamento</Button>
+            {error && <p className="text-sm text-red-500 text-center py-2">{error}</p>}
           </div>
-
           <DialogFooter className="mt-auto pt-4 border-t">
             <DialogClose asChild><Button variant="ghost">Annulla</Button></DialogClose>
-            <Button onClick={handleSavePlan} disabled={isSaving}>
-              {isSaving ? "Salvataggio..." : "Salva Scheda"}
+            <Button onClick={handleSubmit} disabled={isSaving}>
+              {isSaving ? "Salvataggio..." : (mode === 'edit' ? 'Salva Modifiche' : 'Crea Scheda')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-      <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Scheda Salvata!</AlertDialogTitle>
-            <AlertDialogDescription>La tua nuova scheda di allenamento è stata creata con successo.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogAction onClick={handleSuccessDialogClose}>Fantastico!</AlertDialogAction>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
   );
 }

@@ -29,7 +29,7 @@ export default function WorkoutSessionPage({ params: paramsPromise }: { params: 
   const [userId, setUserId] = useState<string | null>(null);
 
   const fetchWorkoutDetails = useCallback(async (id: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .rpc('get_workout_details', { p_workout_id: id });
 
     if (error || !data) {
@@ -94,7 +94,7 @@ export default function WorkoutSessionPage({ params: paramsPromise }: { params: 
       return;
     }
     
-    const { error } = await supabase.rpc('save_workout_session', {
+    const { error } = await (supabase as any).rpc('save_workout_session', {
       p_workout_id: workout.id,
       p_sets: allSetsPayload,
     });

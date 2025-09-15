@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation'; // Anche se non usato, lo teniamo per coerenza
 import { createClient } from '@/lib/supabase/client';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { CardDescription } from '@/components/ui/card';
 import Link from 'next/link';
 import { Dumbbell, Trash2 } from 'lucide-react';
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types';
@@ -24,9 +23,10 @@ import { Input } from '@/components/ui/input';
 interface WorkoutSelectorProps {
   plan: PlanWithWorkoutsAndExercises;
   onDeleteSuccess: () => void;
+  editComponent: React.ReactNode;
 }
 
-export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelectorProps) {
+export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }: WorkoutSelectorProps) {
   const supabase = createClient();
   
   const [confirmText, setConfirmText] = useState("");
@@ -36,72 +36,63 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
   const handleDeletePlan = async () => {
     setIsDeleting(true);
     setError(null);
-
-    const { error } = await supabase
-      .from('workout_plans')
-      .delete()
-      .eq('id', plan.id);
-
+    const { error } = await supabase.from('workout_plans').delete().eq('id', plan.id);
     if (error) {
       setError("Errore durante l'eliminazione: " + error.message);
-      console.error(error);
     } else {
       onDeleteSuccess();
     }
-    
     setIsDeleting(false);
     setConfirmText("");
   };
 
   return (
-    // La card esterna ora è nel componente AccordionItem nella pagina genitore,
-    // quindi qui usiamo un div o un React.Fragment. Un div è meglio per lo stile.
     <div className="relative">
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8 z-10">
-            <Trash2 className="h-4 w-4 text-destructive" />
-            <span className="sr-only">Elimina scheda</span>
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Questa azione è irreversibile. Verranno eliminati permanentemente la scheda
-              <strong className="text-foreground"> &quot;{plan.name}&quot; </strong> 
-              e tutti i suoi allenamenti ed esercizi associati.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="my-4 space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Per confermare, scrivi <strong className="text-foreground">{plan.name}</strong> qui sotto.
-            </p>
-            <Input 
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="CONFERMA"
-            />
-            {error && <p className="text-sm text-red-500">{error}</p>}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmText("")}>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeletePlan}
-              disabled={confirmText !== plan.name || isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Eliminazione..." : "Sì, elimina questa scheda"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <CardDescription className="mb-4">Seleziona un allenamento per iniziare la tua sessione.</CardDescription>
+      <div className="absolute top-2 right-2 h-8 z-10 flex items-center">
+        {editComponent}
+        <AlertDialog onOpenChange={() => {setError(null); setConfirmText("")}}>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Questa azione è irreversibile. Eliminerà la scheda
+                <strong className="text-foreground"> &quot;{plan.name}&quot; </strong> 
+                e tutti i suoi allenamenti.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="my-4 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Per confermare, scrivi <strong className="text-foreground">CONFERMA</strong> qui sotto.
+              </p>
+              <Input 
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="CONFERMA"
+              />
+              {error && <p className="text-sm text-red-500">{error}</p>}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annulla</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeletePlan}
+                disabled={confirmText !== "CONFERMA" || isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeleting ? "Eliminazione..." : "Sì, elimina"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+      
+      <CardDescription className="mb-4">Seleziona un allenamento per iniziare la sessione.</CardDescription>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {/* --- LA CORREZIONE È QUI --- */}
-        {/* Usiamo l'optional chaining `?.` e un fallback `|| []` */}
         {(plan.workouts || []).map((workout) => (
           <Link key={workout.id} href={`/dashboard/gym/${workout.id}`} passHref>
             <div className="flex flex-col items-center justify-center text-center p-6 border rounded-lg hover:bg-muted/50 transition-colors h-full cursor-pointer">
@@ -110,14 +101,11 @@ export default function WorkoutSelector({ plan, onDeleteSuccess }: WorkoutSelect
               </div>
               <p className="font-semibold">{workout.name}</p>
               {workout.muscle_group && (
-                <p className="text-sm text-muted-foreground capitalize">
-                  {workout.muscle_group}
-                </p>
+                <p className="text-sm text-muted-foreground capitalize">{workout.muscle_group}</p>
               )}
             </div>
           </Link>
         ))}
-        {/* Mostriamo un messaggio se non ci sono workout in questa scheda */}
         {(!plan.workouts || plan.workouts.length === 0) && (
             <p className="text-sm text-muted-foreground col-span-full text-center py-8">
                 Questa scheda non ha ancora nessun allenamento.

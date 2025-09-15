@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Menu, GalleryVerticalEnd } from "lucide-react";
+import { Toaster } from "@/components/ui/sonner"
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,7 @@ import { NavLinks } from "@/app/components/dashboard/navLink";
 import { siteConfig } from "@/config/attributes";
 import { UserControls } from "@/app/components/dashboard/userControls";
 import { ModeToggle } from "@/components/mode-toggle";
+
 
 export default function DashboardLayout({
   children,
@@ -94,6 +96,7 @@ export default function DashboardLayout({
       
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
         {children}
+        <Toaster position="top-right" richColors />
       </main>
     </div>
   );
