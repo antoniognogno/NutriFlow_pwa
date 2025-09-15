@@ -58,9 +58,9 @@ export function NewPlanDialog({ mode, planToEdit, onSaveSuccess }: NewPlanDialog
         setPlanName(planToEdit.name);
         const editableWorkouts = planToEdit.workouts.map(workout => ({
           name: workout.name,
-          // <<< CORREZIONE DATABASE SCHEMA: Il tipo custom usa `exercises`
-          exercises: Array.isArray(workout.exercises)
-            ? workout.exercises.map(exercise => ({
+          // <<< CORREZIONE DATABASE SCHEMA: Il tipo custom usa `workout_exercises`
+          exercises: Array.isArray(workout.workout_exercises)
+            ? workout.workout_exercises.map(exercise => ({
                 exercise_name: exercise.exercise_name,
                 target_sets: String(exercise.target_sets || ''),
                 target_reps: String(exercise.target_reps || ''),
