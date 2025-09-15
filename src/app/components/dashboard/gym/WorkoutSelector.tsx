@@ -67,12 +67,12 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
             </AlertDialogHeader>
             <div className="my-4 space-y-2">
               <p className="text-sm text-muted-foreground">
-                Per confermare, scrivi <strong className="text-foreground">CONFERMA</strong> qui sotto.
+                Per confermare, scrivi <strong className="text-foreground">"{plan.name}"</strong> qui sotto.
               </p>
               <Input 
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
-                placeholder="CONFERMA"
+                placeholder={plan.name}
               />
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
@@ -80,7 +80,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
               <AlertDialogCancel>Annulla</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeletePlan}
-                disabled={confirmText !== "CONFERMA" || isDeleting}
+                disabled={confirmText !== plan.name || isDeleting}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {isDeleting ? "Eliminazione..." : "Sì, elimina"}

@@ -26,7 +26,7 @@ interface WorkoutForm {
 
 // --- STATO INIZIALE PER LA MODALITÀ 'CREATE' ---
 const getInitialCreateState = () => ({
-    planName: `La mia Nuova Scheda`,
+    planName: `Scheda`,
     workouts: [
         { name: "Spinta (Petto/Tricipiti/Spalle)", exercises: [{ exercise_name: "Panca Piana", target_sets: "4", target_reps: "8" }] },
         { name: "Tirata (Schiena/Bicipiti)", exercises: [{ exercise_name: "Trazioni o Lat Machine", target_sets: "4", target_reps: "8" }] },
