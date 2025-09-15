@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 interface WorkoutSelectorProps {
   plan: PlanWithWorkoutsAndExercises;
@@ -41,6 +42,7 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
       setError("Errore durante l'eliminazione: " + error.message);
     } else {
       onDeleteSuccess();
+      toast.success("Scheda eliminata con successo.");
     }
     setIsDeleting(false);
     setConfirmText("");

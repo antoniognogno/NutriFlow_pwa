@@ -306,6 +306,14 @@ export type Database = {
         }
         Returns: string
       }
+      update_workout_plan: {
+        Args: {
+          p_plan_id: string
+          p_plan_name: string
+          p_workouts: Database["public"]["CompositeTypes"]["workout_update_type"][]
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
@@ -324,6 +332,11 @@ export type Database = {
         set_number: number | null
         reps: number | null
         weight_kg: number | null
+      }
+      workout_update_type: {
+        id: string | null
+        name: string | null
+        exercises: Json | null
       }
     }
   }
@@ -451,25 +464,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-
-export type PlanWithWorkoutsAndExercises = {
-  id: string
-  name: string
-  created_at: string
-  user_id: string
-  workouts: Array<{
-    id: string
-    name: string
-    muscle_group: string | null
-    plan_id: string
-    exercises: Array<{
-      id: string
-      exercise_name: string
-      order: number
-      target_reps: string | null
-      target_sets: number | null
-      workout_id: string
-    }>
-  }>
-}
