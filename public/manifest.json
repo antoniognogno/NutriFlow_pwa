@@ -44,5 +44,18 @@
   "background_color": "#ffffff",
   "display": "standalone",
   "scope": "/",
-  "start_url": "/dashboard"
+  "start_url": "/",
+  "orientation": "portrait",
+  "lang": "it-IT",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "categories": ["health", "fitness", "nutrition", "productivity"],
+  "screenshots": [
+    {
+      "src": "./icons/android/android-launchericon-512-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "label": "Dashboard NutriFlow"
+    }
+  ]
 }

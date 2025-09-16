@@ -15,7 +15,7 @@ export default function LoginPage() {
              <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
                 <GalleryVerticalEnd className="size-5" />
              </div>
-             <h1 className="text-2xl font-bold tracking-tight text-foreground">{siteConfig.name}</h1>
+             <h1 className="text-2xl font-bold tracking-tight text-foreground dark:text-white">{siteConfig.name}</h1>
           </div>
         </div>
         <LoginForm />
