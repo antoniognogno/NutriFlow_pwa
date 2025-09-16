@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // Componenti UI
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+
+// <<< AZIONE CHIAVE: Importiamo dinamicamente il nostro nuovo grafico autonomo
+const DynamicWaterLogChart = dynamic(
+  () => import('@/app/components/dashboard/WaterLogChart').then(mod => mod.WaterLogChart),
+  {
+    // Mostriamo lo scheletro mentre il codice del grafico viene scaricato
+    loading: () => <Skeleton className="h-[430px] w-full" />,
+    ssr: false, // I grafici non necessitano di Server-Side Rendering
+  }
+);
 
 // Icone
 import { GlassWater, Droplet, Milk, RotateCcw } from "lucide-react"; 
@@ -201,7 +213,7 @@ export default function WaterTrackerPage() {
 
       {/* Il grafico viene renderizzato qui, come componente autonomo, solo se ci sono dati */}
        {chartData.some(d => d.ml > 0) && ( // Mostra il grafico solo se c'è almeno un dato > 0
-          <WaterLogChart data={chartData} />
+          <DynamicWaterLogChart />
         )}
     </div>
   );

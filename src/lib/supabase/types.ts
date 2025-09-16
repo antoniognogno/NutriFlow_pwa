@@ -491,3 +491,38 @@ export type PlanWithWorkoutsAndExercises = WorkoutPlan & {
   })[];
 };
 
+export type Win = {
+  /**
+   * Un identificatore unico per il tipo di vittoria,
+   * usato internamente (es. come `key` in React).
+   * Esempi: "hydration_streak", "workout_frequency", "hydration_record".
+   */
+  type: string;
+
+  /**
+   * Il titolo principale della card della vittoria.
+   * Esempi: "Che Costanza!", "Sempre Attivo!", "Super Idratato!".
+   */
+  title: string;
+
+  /**
+   * La descrizione dettagliata che mostra il risultato specifico.
+   * Esempi: "3 giorni di idratazione!", "4 workout in 7 giorni", "Record: 2500 ml".
+   */
+  description: string;
+
+  /**
+   * Il nome di un'icona di `lucide-react` da visualizzare.
+   * Il frontend userà questo nome per scegliere dinamicamente quale componente icona renderizzare.
+   * Esempi: "Award", "Dumbbell", "Droplets".
+   */
+  icon: string;
+
+  /**
+   * Una stringa che rappresenta un colore per lo sfondo dell'icona.
+   * Il frontend userà questo nome per applicare la classe Tailwind CSS corretta.
+   * Esempi: "green", "purple", "sky".
+   */
+  color: string;
+};
+

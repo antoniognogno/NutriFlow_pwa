@@ -8,7 +8,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
   title: "NutriFlow",
   description: "Il tuo assistente personale per il benessere.",
   appleWebApp: {
@@ -16,6 +15,13 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "NutriFlow",
   },
+  manifest: '/manifest.json',
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

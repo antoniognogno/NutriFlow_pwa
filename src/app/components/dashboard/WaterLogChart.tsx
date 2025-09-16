@@ -1,24 +1,50 @@
 // src/app/components/dashboard/WaterLogChart.tsx
-'use client'
+'use client';
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useMediaQuery } from "@/hooks/use-media-query"
-import { useTheme } from "next-themes"
-import { useEffect, useState } from "react"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useTheme } from "next-themes";
+import { useEffect, useState, useMemo } from "react";
 import { chartColors } from "@/config/chartColors";
+import useSWR from "swr";
+import { createClient } from "@/lib/supabase/client";
 
 export interface WaterChartData {
   time: string;
   ml: number;
 }
 
-interface WaterLogChartProps {
-  data: WaterChartData[];
-}
+const waterDataFetcher = async (): Promise<WaterChartData[]> => {
+    const supabase = createClient();
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+        .from('water_logs')
+        .select('amount_ml, created_at')
+        .gte('created_at', `${today}T00:00:00.000Z`)
+        .lte('created_at', `${today}T23:59:59.999Z`);
+    if (error) throw error;
+    
+    const hourlyData: { [key: string]: number } = {};
+    for (let i = 6; i < 24; i++) {
+        hourlyData[i.toString().padStart(2, '0')] = 0;
+    }
+    data.forEach(log => {
+        const hour = new Date(log.created_at).getHours().toString().padStart(2, '0');
+        if (hourlyData[hour] !== undefined) hourlyData[hour] += log.amount_ml;
+    });
+    return Object.entries(hourlyData).map(([hour, total_ml]) => ({
+        time: `${hour}:00`,
+        ml: total_ml,
+    }));
+};
 
-
-export function WaterLogChart({ data }: WaterLogChartProps) {
+export function WaterLogChart() {
+  const { data, error, mutate } = useSWR('water_log_today', waterDataFetcher, {
+    // Aggiungiamo un refresh automatico ogni 60 secondi
+    refreshInterval: 60000 
+  });
+  
   const isMobile = useMediaQuery("(max-width: 640px)");
   const { theme } = useTheme();
   const [isMounted, setIsMounted] = useState(false);
@@ -27,27 +53,23 @@ export function WaterLogChart({ data }: WaterLogChartProps) {
     setIsMounted(true);
   }, []);
 
-  // Usa i colori universali
   const colors = theme === "dark" ? chartColors.dark : chartColors.light;
+  
+  const filteredData = useMemo(() => {
+      return data?.filter(item => item.ml > 0) || [];
+  }, [data]);
 
-  // Componente Tooltip personalizzato per un controllo totale sullo stile
-  const CustomTooltip = ({ active, payload, label, colors }: any) => {
+  // <<< CORREZIONE: Definiamo il componente Tooltip completo qui
+  const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div
-          className="rounded-lg border p-2 shadow-sm"
-          style={{
-            background: colors.tooltipBg,
-            borderColor: colors.tooltipBorder,
-            color: colors.tooltipText,
-            borderWidth: 1,
-            borderStyle: "solid",
-          }}
+          className="rounded-lg border bg-background p-2 shadow-sm"
         >
           <div className="grid grid-cols-1 gap-1">
-            <p className="text-sm font-bold" style={{ color: colors.tooltipText }}>{label}</p>
-            <p className="text-sm" style={{ color: colors.bar }}>
-              <span className="font-semibold" style={{ color: colors.tooltipText }}>Consumati:</span> {payload[0].value.toLocaleString('it-IT')} ml
+            <p className="text-sm font-bold text-foreground">{label}</p>
+            <p className="text-sm text-primary">
+              <span className="font-semibold text-muted-foreground">Consumati:</span> {payload[0].value.toLocaleString('it-IT')} ml
             </p>
           </div>
         </div>
@@ -55,51 +77,27 @@ export function WaterLogChart({ data }: WaterLogChartProps) {
     }
     return null;
   };
-
-  if (!isMounted) {
-    // Questo evita il flash del grafico non stilizzato durante il caricamento del tema
-    return (
-      <div className="h-[362px] w-full flex items-center justify-center rounded-lg border">
-        <p className="text-sm text-muted-foreground">Caricamento grafico...</p>
-      </div>
-    );
-  }
-
-  const filteredData = data.filter(item => item.ml > 0);
+  
+  if (error) return <div className="flex h-full w-full items-center justify-center rounded-lg border bg-muted/50 p-4"><p className="text-destructive">Impossibile caricare i dati del grafico.</p></div>;
+  if (!isMounted) return null; // Gestito dallo Skeleton della pagina padre
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Consumazioni Orarie</CardTitle>
-        <CardDescription>
-          Un riepilogo di quando hai bevuto oggi.
-        </CardDescription>
+        <CardDescription>Un riepilogo di quando hai bevuto oggi.</CardDescription>
       </CardHeader>
       <CardContent className="pl-0 sm:pl-2">
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart 
-            data={filteredData} 
-            margin={{ top: 10, right: 10, bottom: 5, left: -20 }}
-          >
+          <BarChart data={filteredData} margin={{ top: 10, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
-            <XAxis 
-              dataKey="time" 
-              fontSize={12} 
-              tickLine={false} 
-              axisLine={false} 
-              stroke={colors.text}
-              dy={10}
-            />
+            <XAxis dataKey="time" fontSize={12} tickLine={false} axisLine={false} stroke={colors.text} dy={10} />
+            {/* <<< CORREZIONE: Non passiamo più props al tooltip, si prende i colori dal contesto */}
             <Tooltip
               cursor={{ fill: colors.tooltipBg, opacity: 0.5 }}
-              content={<CustomTooltip colors={colors} />}
+              content={<CustomTooltip />}
             />
-            <Bar 
-              dataKey="ml" 
-              fill={colors.bar}
-              radius={[4, 4, 0, 0]} 
-              barSize={isMobile ? 15 : 25}
-            />
+            <Bar dataKey="ml" fill={colors.bar} radius={[4, 4, 0, 0]} barSize={isMobile ? 15 : 25} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
