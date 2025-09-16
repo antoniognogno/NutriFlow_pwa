@@ -24,6 +24,7 @@ import {
 
 // Icone
 import { GlassWater, Droplet, Milk, RotateCcw } from "lucide-react"; 
+import { toast } from "sonner";
 
 // Importiamo dinamicamente il componente del grafico per evitare problemi di SSR con i colori
 const WaterLogChart = dynamic(
@@ -123,8 +124,9 @@ export default function WaterTrackerPage() {
     const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
     const { error } = await supabase.from('water_logs').delete().eq('user_id', userId).gte('created_at', startOfDay.toISOString());
     if (error) {
-      alert("Errore durante il reset: " + error.message);
+      toast.error("Errore nel resettare i log: " + error.message);
     } else {
+      toast.success("Log resettati con successo.");
       await fetchData(userId); // Ricarica tutti i dati, incluso il grafico
     }
   };
