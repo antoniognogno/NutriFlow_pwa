@@ -2,27 +2,25 @@
 
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useTheme } from "next-themes"
+import { chartColors } from "@/config/chartColors"
 
 export interface ExerciseProgressData {
   completed_date: string;
   max_weight: number;
 }
 
+
 interface ExerciseProgressChartProps {
   data: ExerciseProgressData[];
   exerciseName: string;
-  colors: {
-    line: string;
-    grid: string;
-    text: string;
-    tooltipBg: string;
-    tooltipBorder: string;
-    tooltipText: string;
-  };
 }
 
-export function ExerciseProgressChart({ data, exerciseName, colors }: ExerciseProgressChartProps) {
+export function ExerciseProgressChart({ data, exerciseName }: ExerciseProgressChartProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const { theme } = useTheme();
+  const colors = theme === "dark" ? chartColors.dark : chartColors.light;
+
 
   return (
     <ResponsiveContainer width="100%" height={300}>

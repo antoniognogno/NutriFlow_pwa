@@ -2,19 +2,19 @@ import { Lightbulb } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function FocusCard() {
-  return (
-    <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg">
-      <CardHeader className="flex flex-row items-center gap-4 pb-2">
-        <Lightbulb size={28} />
-        <CardTitle className="text-xl font-bold">Il Tuo Focus di Oggi</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-lg">
-          Grande volume di allenamento ieri! Assicurati di fare il pieno di proteine oggi per un recupero ottimale.
-        </p>
-      </CardContent>
+return (
+    <Card className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg dark:bg-gradient-to-br dark:text-white">
+        <CardHeader className="flex flex-row items-center gap-4 pb-2">
+            <Lightbulb size={40} className="text-amber-300" />
+            <CardTitle className="text-xl font-bold">Il Tuo Focus di Oggi</CardTitle>
+        </CardHeader>
+        <CardContent>
+            <p className="text-lg dark:text-gray-100">
+                Grande volume di allenamento ieri! Assicurati di fare il pieno di proteine oggi per un recupero ottimale.
+            </p>
+        </CardContent>
     </Card>
-  );
+);
 }
 
 // src/app/components/dashboard/home/FocusCard.tsx

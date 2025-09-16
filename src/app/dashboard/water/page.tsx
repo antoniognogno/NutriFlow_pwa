@@ -34,7 +34,6 @@ const WaterLogChart = dynamic(
     loading: () => <p className="text-center text-sm text-muted-foreground py-8">Caricamento grafico...</p>
   }
 );
-
 interface ChartData {
   time: string;
   ml: number;
@@ -201,9 +200,9 @@ export default function WaterTrackerPage() {
       </Card>
 
       {/* Il grafico viene renderizzato qui, come componente autonomo, solo se ci sono dati */}
-      {chartData.length > 0 && (
-        <WaterLogChart data={chartData} />
-      )}
+       {chartData.some(d => d.ml > 0) && ( // Mostra il grafico solo se c'è almeno un dato > 0
+          <WaterLogChart data={chartData} />
+        )}
     </div>
   );
 }

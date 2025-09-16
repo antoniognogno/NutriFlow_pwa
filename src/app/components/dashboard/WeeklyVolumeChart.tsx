@@ -3,6 +3,8 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useTheme } from "next-themes"
+import { chartColors } from "@/config/chartColors"
 
 export interface WeeklyVolumeData {
   week_start: string;
@@ -11,18 +13,12 @@ export interface WeeklyVolumeData {
 
 interface WeeklyVolumeChartProps {
   data: WeeklyVolumeData[];
-  colors: {
-    bar: string;
-    grid: string;
-    text: string;
-    tooltipBg: string;
-    tooltipBorder: string;
-    tooltipText: string;
-  };
 }
 
-export function WeeklyVolumeChart({ data, colors }: WeeklyVolumeChartProps) {
+export function WeeklyVolumeChart({ data }: WeeklyVolumeChartProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
+  const { theme } = useTheme();
+  const colors = theme === "dark" ? chartColors.dark : chartColors.light;
 
   const maxVolume = Math.max(...data.map(item => item.total_volume));
   const yAxisDomain = [0, Math.ceil((maxVolume * 1.1) / 100) * 100];

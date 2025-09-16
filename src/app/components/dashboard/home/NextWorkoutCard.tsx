@@ -27,71 +27,64 @@ const getWorkoutTip = (workoutName: string): string => {
 
 
 export function NextWorkoutCard({ workout }: NextWorkoutCardProps) {
-  
-  if (!workout) {
+    if (!workout) {
+        return (
+            <Card className="flex flex-col h-full items-center justify-center text-center p-6 bg-muted/60 dark:bg-zinc-900 border-dashed">
+                <Info className="text-muted-foreground mb-4 h-12 w-12" />
+                <h3 className="text-lg font-semibold text-foreground dark:text-white">Nessuna Scheda Trovata</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                    Crea la tua prima scheda di allenamento per vedere qui la tua prossima sfida!
+                </p>
+                <Link href="/dashboard/gym" passHref>
+                    <Button variant="secondary" className="dark:bg-zinc-800 dark:text-white">Vai al Gym Tracker</Button>
+                </Link>
+            </Card>
+        );
+    }
+
+    const exercisePreview = workout.workout_exercises.slice(0, 3).map(ex => ex.exercise_name).join(', ');
+    const motivationalTip = useMemo(() => getWorkoutTip(workout.name), [workout.name]);
+
     return (
-      <Card className="flex flex-col h-full items-center justify-center text-center p-6 bg-muted/50 border-dashed">
-        <Info className="text-muted-foreground mb-4 h-12 w-12" />
-        <h3 className="text-lg font-semibold">Nessuna Scheda Trovata</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Crea la tua prima scheda di allenamento per vedere qui la tua prossima sfida!
-        </p>
-        <Link href="/dashboard/gym" passHref>
-            <Button>Vai al Gym Tracker</Button>
-        </Link>
-      </Card>
+        <Card className="flex flex-col h-full bg-background dark:bg-zinc-900 border dark:border-zinc-800">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground dark:text-white">
+                    <Dumbbell className="text-primary dark:text-primary-400" />
+                    Prossima Sfida
+                </CardTitle>
+                <CardDescription className="dark:text-zinc-400">Il tuo prossimo allenamento in programma.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="flex-grow flex flex-col">
+                <div className="bg-muted/60 dark:bg-zinc-800 p-4 rounded-lg flex-grow flex flex-col justify-between">
+                    <div>
+                        <h3
+                            className="text-2xl font-bold text-primary dark:text-primary-400 truncate"
+                            title={workout.name}
+                        >
+                            {workout.name}
+                        </h3>
+                        {workout.workout_exercises.length > 0 ? (
+                            <p className="text-muted-foreground dark:text-zinc-300 truncate" title={exercisePreview}>
+                                {exercisePreview}{workout.workout_exercises.length > 3 ? '...' : ''}
+                            </p>
+                        ) : (
+                            <p className="text-muted-foreground dark:text-zinc-400 italic">Nessun esercizio aggiunto.</p>
+                        )}
+                    </div>
+                    <p className="text-sm mt-4 italic text-muted-foreground/80 dark:text-zinc-400">
+                        "{motivationalTip}"
+                    </p>
+                </div>
+            </CardContent>
+
+            <CardFooter>
+                <Link href={`/dashboard/gym/${workout.id}`} passHref className="w-full">
+                    <Button className="w-full font-bold dark:bg-primary-600 dark:text-white dark:hover:bg-primary-500">
+                        Inizia Sessione
+                    </Button>
+                </Link>
+            </CardFooter>
+        </Card>
     );
-  }
-
-  const exercisePreview = workout.workout_exercises.slice(0, 3).map(ex => ex.exercise_name).join(', ');
-  const motivationalTip = useMemo(() => getWorkoutTip(workout.name), [workout.name]);
-
-  return (
-    <Card className="flex flex-col h-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Dumbbell className="text-primary" />
-          Prossima Sfida
-        </CardTitle>
-        <CardDescription>Il tuo prossimo allenamento in programma.</CardDescription>
-      </CardHeader>
-
-      {/* <<< MODIFICA: Miglioriamo il layout del contenuto */}
-      <CardContent className="flex-grow flex flex-col">
-        <div className="bg-muted p-4 rounded-lg flex-grow flex flex-col justify-between">
-          
-          {/* Sezione Superiore: Info del Workout */}
-          <div>
-            {/* <<< MODIFICA: Aggiunto `truncate` per evitare l'overflow */}
-            <h3 
-              className="text-2xl font-bold text-primary truncate" 
-              title={workout.name} // Mostra il nome completo al passaggio del mouse su desktop
-            >
-              {workout.name}
-            </h3>
-            
-            {workout.workout_exercises.length > 0 ? (
-              <p className="text-muted-foreground truncate" title={exercisePreview}>
-                {exercisePreview}{workout.workout_exercises.length > 3 ? '...' : ''}
-              </p>
-            ) : (
-              <p className="text-muted-foreground italic">Nessun esercizio aggiunto.</p>
-            )}
-          </div>
-          
-          {/* Sezione Inferiore: Frase Motivazionale */}
-          <p className="text-sm mt-4 italic text-muted-foreground/80">
-            "{motivationalTip}"
-          </p>
-
-        </div>
-      </CardContent>
-
-      <CardFooter>
-        <Link href={`/dashboard/gym/${workout.id}`} passHref className="w-full">
-          <Button className="w-full font-bold">Inizia Sessione</Button>
-        </Link>
-      </CardFooter>
-    </Card>
-  );
 }

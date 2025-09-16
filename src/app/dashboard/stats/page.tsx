@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useTheme } from "next-themes";
+import { chartColors } from "@/config/chartColors";
 
 import { WeeklyVolumeChart, WeeklyVolumeData } from "@/app/components/dashboard/WeeklyVolumeChart";
 import { ExerciseProgressChart, ExerciseProgressData } from "@/app/components/dashboard/ExerciseProgressChart";
@@ -25,12 +26,8 @@ export default function StatsPage() {
   const [selectedExercise, setSelectedExercise] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Colori per i grafici, calcolati in base al tema
-  const chartColors = {
-    light: { bar: "#2563eb", line: "#2563eb", grid: "#e5e7eb", text: "#6b7280", tooltipBg: "#ffffff", tooltipBorder: "#e5e7eb", tooltipText: "#030712" },
-    dark: { bar: "#3b82f6", line: "#3b82f6", grid: "#2727a", text: "#a1a1aa", tooltipBg: "#09090b", tooltipBorder: "#2727a", tooltipText: "#f8fafc" }
-  };
-  const currentColors = resolvedTheme === 'dark' ? chartColors.dark : chartColors.light;
+  // Colori per i grafici, calcolati in base al tema (ora universali)
+  // const currentColors = resolvedTheme === 'dark' ? chartColors.dark : chartColors.light;
 
   useEffect(() => {
     const fetchInitialStats = async () => {
@@ -106,7 +103,7 @@ export default function StatsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Colonna Sinistra (o prima su mobile) */}
           <div className="lg:col-span-1">
-            {weeklyData.length > 0 && <WeeklyVolumeChart data={weeklyData} colors={currentColors} />}
+            {weeklyData.length > 0 && <WeeklyVolumeChart data={weeklyData} />}
           </div>
           
           {/* Colonna Destra (o seconda su mobile) */}
@@ -128,7 +125,7 @@ export default function StatsPage() {
                 </CardHeader>
                 <CardContent>
                   {exerciseProgressData.length > 0 ? (
-                    <ExerciseProgressChart data={exerciseProgressData} exerciseName={selectedExercise} colors={currentColors} />
+                    <ExerciseProgressChart data={exerciseProgressData} exerciseName={selectedExercise} />
                   ) : (
                     <div className="text-sm text-center text-muted-foreground h-[350px] flex items-center justify-center">
                       <p>Nessun dato di progressione per questo esercizio.</p>
