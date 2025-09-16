@@ -259,6 +259,14 @@ export type Database = {
         Args: { p_exercise_id: string }
         Returns: Json
       }
+      get_latest_plan_details: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_recent_wins: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       get_user_workout_plans: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -464,23 +472,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
-
-export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type WorkoutPlan = Database['public']['Tables']['workout_plans']['Row'];
-export type Workout = Database['public']['Tables']['workouts']['Row'];
-export type WorkoutExercise = Database['public']['Tables']['workout_exercises']['Row'];
-export type WaterLog = Database['public']['Tables']['water_logs']['Row'];
-export type ExerciseLog = Database['public']['Tables']['exercise_logs']['Row'];
-
-// Passo 3: Definisci ed ESPORTA il nostro tipo custom complesso.
-// Questo è il tipo che risolve l'errore di build.
-// Stiamo dicendo: "Un WorkoutPlan, che inoltre ha una proprietà 'workouts'.
-// Ogni 'workout' è un normale Workout, che inoltre ha una proprietà 'workout_exercises'".
-export type PlanWithWorkoutsAndExercises = WorkoutPlan & {
-  workouts: (Workout & {
-    workout_exercises: WorkoutExercise[];
-  })[];
-};
-
-
