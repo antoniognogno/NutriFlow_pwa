@@ -32,27 +32,34 @@ export function LoginForm({
   const [isLoading, setIsLoading] = useState(false); // <<< Aggiungiamo uno stato di caricamento per la UX
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true); // <<< Attiva il loader
+  e.preventDefault();
+  setError(null);
+  setIsLoading(true);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: email,
+    password: password,
+  });
 
-    if (signInError) {
-      setError("Credenziali non valide. Riprova.");
-      setIsLoading(false); // <<< Disattiva il loader in caso di errore
-      return;
-    }
+  // Ferma il caricamento subito dopo la chiamata, così vediamo i risultati
+  setIsLoading(false); 
 
-    // <<< SOLUZIONE CHIAVE: Reindirizzamento "Hard"
-    // Questo forza un ricaricamento completo della pagina, assicurando
-    // che il cookie di sessione sia letto correttamente dal browser
-    // prima che il middleware di protezione della dashboard si attivi.
-    window.location.href = '/dashboard';
+  if (signInError) {
+    // <<< AZIONE DI DEBUG CHIAVE
+    // Logghiamo l'errore REALE di Supabase nella console del browser.
+    console.error("Errore dettagliato da Supabase:", signInError);
+    
+    // Mostriamo un messaggio di errore più specifico all'utente.
+    // Questo ci aiuterà a capire se è un problema di rete o di credenziali.
+    setError(`Login fallito: ${signInError.message}`);
+    
+    return;
   }
+  
+  // Se arriviamo qui, il login è andato a buon fine
+  console.log("Login avvenuto con successo! Inizio il reindirizzamento...");
+  window.location.href = '/dashboard';
+}
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
