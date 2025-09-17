@@ -1,37 +1,60 @@
 // src/app/login/page.tsx
-'use client'; // <<< PASSO 1: Trasforma in un Client Component
+'use client';
 
-import { useEffect } from 'react'; // <<< PASSO 2: Importa useEffect
-import { useRouter } from 'next/navigation'; // <<< PASSO 3: Importa useRouter
-import { createClient } from '@/lib/supabase/client'; // <<< PASSO 4: Importa il client Supabase
+import { useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
-import { LoginForm } from "../components/loginForm";
-import { siteConfig } from "../../config/attributes";
+// --- Correzione dei Percorsi di Importazione ---
+// Assumendo che LoginForm si trovi in 'src/app/components/loginForm.tsx'.
+// Se si trova in 'src/components/loginForm.tsx' o 'src/components/auth/LoginForm.tsx',
+// adatta il percorso di conseguenza. L'uso di '@/` è la best practice.
+import { LoginForm } from "@/app/components/loginForm"; 
+import { siteConfig } from "@/config/attributes"; 
 import { GalleryVerticalEnd } from "lucide-react";
 
-
-
-// <<< PASSO 5: Aggiungi il listener per i cambi di stato di autenticazione
 export default function LoginPage() {
   const supabase = createClient();
+  console.log("[LOGIN PAGE] Pagina di login renderizzata.");
 
   useEffect(() => {
+    console.log("[LOGIN PAGE] useEffect attivato. Imposto il listener onAuthStateChange.");
+
+    // Questo listener si attiva ogni volta che lo stato di autenticazione cambia.
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      // Ascolta SOLO l'evento SIGNED_IN
-      if (event === 'SIGNED_IN') {
-        // Usa il metodo di reindirizzamento più forte possibile.
-        // Questo forza un ricaricamento completo, pulisce tutto lo stato
-        // e garantisce che la nuova richiesta a /dashboard contenga
-        // il cookie di sessione corretto.
-        window.location.href = '/dashboard';
+      console.log(`[LOGIN PAGE] onAuthStateChange ha ricevuto un evento: ${event}`);
+
+      if (event === 'SIGNED_IN' && session) {
+        console.log("[LOGIN PAGE] Evento SIGNED_IN rilevato! La sessione è presente. TENTO IL REINDIRIZZAMENTO HARD.");
+        
+        // Usiamo un piccolo timeout per dare al browser un istante per processare il cookie.
+        setTimeout(() => {
+          console.log("[LOGIN PAGE] Eseguo window.location.href = '/dashboard'");
+          window.location.href = '/dashboard';
+        }, 100); // 100ms di ritardo
       }
     });
 
-    // Pulisci il listener quando il componente viene smontato
+    // Controlliamo anche lo stato iniziale all'avvio.
+    // Se l'utente arriva sulla pagina di login ma ha già una sessione valida,
+    // lo reindirizziamo subito alla dashboard.
+    const checkInitialSession = async () => {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+            console.log("[LOGIN PAGE] Trovata una sessione esistente al caricamento della pagina. Reindirizzo.");
+            window.location.href = '/dashboard';
+        } else {
+            console.log("[LOGIN PAGE] Nessuna sessione iniziale trovata.");
+        }
+    }
+    checkInitialSession();
+
+    // Puliamo il listener quando il componente viene smontato.
     return () => {
+      console.log("[LOGIN PAGE] Smonto il componente. Pulisco il listener.");
       authListener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase]); // La dipendenza assicura che l'effetto venga eseguito una sola volta.
+ 
 
   return (
     <div className="flex items-center justify-center min-h-screen p-4 bg-background">
@@ -46,7 +69,10 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Il LoginForm ora si occupa solo di fare il login, non del reindirizzamento */}
+        {/* 
+          Il LoginForm si occupa solo di fare la chiamata a Supabase.
+          Il reindirizzamento è gestito dall'useEffect di questa pagina.
+        */}
         <LoginForm />
 
       </div>

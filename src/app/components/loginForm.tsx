@@ -1,12 +1,16 @@
+// in src/app/components/loginForm.tsx
+
 'use client'
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+// useRouter non è utilizzato, lo rimuoviamo per pulizia
+// import { useRouter } from "next/navigation" 
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 
 // Import dei componenti UI
-import { cn } from "@/lib/utils"
+// cn non è utilizzato, lo rimuoviamo
+// import { cn } from "@/lib/utils" 
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -17,13 +21,12 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import React from "react"; // React viene importato implicitamente, ma lasciarlo non fa male
 
-import React from "react";
-
-export function LoginForm({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function LoginForm() { // Non riceve più props come className, quindi le rimuoviamo dalla firma
   const supabase = createClient();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -31,29 +34,33 @@ export function LoginForm({ className, ...props }: React.HTMLAttributes<HTMLDivE
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+    console.log("[LOGIN FORM] Tentativo di login avviato per:", email);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
     
-    // Se c'è un errore, mostralo e fermati.
     if (signInError) {
-      console.error("Errore di login da Supabase:", signInError.message);
-      setError("Credenziali non valide. Riprova.");
+      console.error("[LOGIN FORM] Errore da Supabase:", signInError);
+      setError(`Errore: ${signInError.message}`);
       setIsLoading(false);
       return;
     }
 
-    // SE IL LOGIN HA SUCCESSO:
-    // Non facciamo NIENTE. Non reindirizziamo. Non facciamo nulla.
-    // L'evento onAuthStateChange si occuperà del resto.
-    // Lasciamo che lo stato `isLoading` rimanga `true` per dare un feedback
-    // all'utente che l'app sta lavorando.
-  }
+    if (!data.session) {
+      console.error("[LOGIN FORM] Login riuscito ma non è stata restituita una sessione.");
+      setError("Qualcosa è andato storto. Nessuna sessione ricevuta.");
+      setIsLoading(false);
+      return;
+    }
+
+    // Se il login ha successo, non facciamo nulla. Il listener si occuperà del resto.
+  };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    // Dato che non passiamo più `className`, possiamo semplificare questo div
+    <div className="flex flex-col gap-6"> 
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Bentornato!</CardTitle>
@@ -69,7 +76,7 @@ export function LoginForm({ className, ...props }: React.HTMLAttributes<HTMLDivE
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
-                    type="email" // <-- CORRETTO
+                    type="email"
                     placeholder="tua@email.com"
                     required
                     value={email}
@@ -99,8 +106,8 @@ export function LoginForm({ className, ...props }: React.HTMLAttributes<HTMLDivE
                 )}
                 <Button
                   type="submit"
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-white dark:hover:bg-primary/80" // Rimosso stili duplicati per pulizia
-                  disabled={isLoading} // <<< Disabilita il bottone durante il caricamento
+                  className="w-full"
+                  disabled={isLoading}
                 >
                   {isLoading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
