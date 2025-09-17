@@ -1,5 +1,4 @@
-// src/middleware.ts (versione corretta e sicura)
-
+// src/middleware.ts
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
@@ -8,28 +7,30 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  // Rinfresca la sessione. È importante, ma non usiamo il suo `user` object per la sicurezza.
+  // 1. Rinfresca sempre la sessione. Questo è il suo compito principale.
   await supabase.auth.getSession();
 
-  // <<< CORREZIONE DI SICUREZZA: Usiamo getUser() per la logica di protezione
+  // 2. Applica la logica di protezione
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Se l'utente non è loggato e cerca di accedere a /dashboard, reindirizza a /login
-  if (!user && req.nextUrl.pathname.startsWith('/dashboard')) {
+  const { pathname } = req.nextUrl;
+
+  // Se l'utente non è loggato, proteggi l'area /dashboard
+  if (!user && pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  // Se l'utente è loggato e cerca di accedere a /login o /signup, reindirizza a /dashboard
-  if (user && (req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/signup'))) {
+  // Se l'utente è loggato, proteggi le pagine di autenticazione
+  if (user && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
       return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   return res;
 }
 
-// Assicurati che il matcher sia quello corretto
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|icons|manifest.json).*)',
+    // Esegui il middleware su tutte le rotte tranne i file statici e le API
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|icons).*)',
   ],
 };

@@ -14,20 +14,20 @@ import { GalleryVerticalEnd } from "lucide-react";
 // <<< PASSO 5: Aggiungi il listener per i cambi di stato di autenticazione
 export default function LoginPage() {
   const supabase = createClient();
-  // const router = useRouter(); // Puoi anche rimuoverlo se non serve altro
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Ascolta SOLO l'evento SIGNED_IN
       if (event === 'SIGNED_IN') {
-        console.log("Evento SIGNED_IN rilevato. Forzo il reindirizzamento a /dashboard...");
-
-        // <<< SOLUZIONE DEFINITIVA
-        // Invece di una navigazione "soft" lato client, usiamo un reindirizzamento "hard"
-        // a livello di browser. Questo è il metodo più robusto e garantito.
+        // Usa il metodo di reindirizzamento più forte possibile.
+        // Questo forza un ricaricamento completo, pulisce tutto lo stato
+        // e garantisce che la nuova richiesta a /dashboard contenga
+        // il cookie di sessione corretto.
         window.location.href = '/dashboard';
       }
     });
 
+    // Pulisci il listener quando il componente viene smontato
     return () => {
       authListener.subscription.unsubscribe();
     };

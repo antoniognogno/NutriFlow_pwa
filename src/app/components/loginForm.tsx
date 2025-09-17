@@ -18,40 +18,39 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+import React from "react";
 
-  const supabase = createClient()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-
-  // Funzione di login SEMPLIFICATA
-  const [isLoading, setIsLoading] = useState(false); // <<< Aggiungiamo uno stato di caricamento per la UX
+export function LoginForm({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  const supabase = createClient();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    // Esegui la chiamata di login
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
-
-    setIsLoading(false); // Disattiva il loader in ogni caso
-
-    if (error) {
-      // Se c'è un errore, mostralo e basta.
-      console.error("Errore di login:", error.message);
+    
+    // Se c'è un errore, mostralo e fermati.
+    if (signInError) {
+      console.error("Errore di login da Supabase:", signInError.message);
       setError("Credenziali non valide. Riprova.");
+      setIsLoading(false);
+      return;
     }
-    // Se il login ha successo, NON FARE NULLA.
-    // L'useEffect nella pagina genitore rileverà l'evento 'SIGNED_IN' e gestirà il reindirizzamento.
-  };
+
+    // SE IL LOGIN HA SUCCESSO:
+    // Non facciamo NIENTE. Non reindirizziamo. Non facciamo nulla.
+    // L'evento onAuthStateChange si occuperà del resto.
+    // Lasciamo che lo stato `isLoading` rimanga `true` per dare un feedback
+    // all'utente che l'app sta lavorando.
+  }
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
