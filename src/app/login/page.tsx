@@ -1,65 +1,61 @@
 // src/app/login/page.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react'; // Aggiungiamo useState
 import { createClient } from '@/lib/supabase/client';
-
-// --- Correzione dei Percorsi di Importazione ---
-// Assumendo che LoginForm si trovi in 'src/app/components/loginForm.tsx'.
-// Se si trova in 'src/components/loginForm.tsx' o 'src/components/auth/LoginForm.tsx',
-// adatta il percorso di conseguenza. L'uso di '@/` è la best practice.
 import { LoginForm } from "@/app/components/loginForm"; 
 import { siteConfig } from "@/config/attributes"; 
 import { GalleryVerticalEnd } from "lucide-react";
+import { Loader2 } from 'lucide-react'; // Importiamo un loader
 
 export default function LoginPage() {
   const supabase = createClient();
-  console.log("[LOGIN PAGE] Pagina di login renderizzata.");
+  // Stato per gestire il caricamento e prevenire loop
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("[LOGIN PAGE] useEffect attivato. Imposto il listener onAuthStateChange.");
+    // 1. Controlliamo subito se c'è già una sessione.
+    // Il middleware dovrebbe già gestire questo, ma questo è il nostro fallback.
+    const checkInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Se c'è una sessione, il middleware ci reindirizzerà.
+        // Non facciamo nulla qui, ma smettiamo di caricare per mostrare il form
+        // nel caso in cui il middleware fallisca.
+        console.log("[LOGIN PAGE] Trovata sessione iniziale. Attendo il redirect del middleware.");
+      }
+      setLoading(false); // Smettiamo di caricare in ogni caso
+    };
 
-    // Questo listener si attiva ogni volta che lo stato di autenticazione cambia.
+    checkInitialSession();
+
+    // 2. Impostiamo il listener per il FUTURO evento di login.
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log(`[LOGIN PAGE] onAuthStateChange ha ricevuto un evento: ${event}`);
-
+      // Questo si attiverà solo quando l'utente compila il form e il login ha successo.
       if (event === 'SIGNED_IN' && session) {
-        console.log("[LOGIN PAGE] Evento SIGNED_IN rilevato! La sessione è presente. TENTO IL REINDIRIZZAMENTO HARD.");
-        
-        // Usiamo un piccolo timeout per dare al browser un istante per processare il cookie.
-        setTimeout(() => {
-          console.log("[LOGIN PAGE] Eseguo window.location.href = '/dashboard'");
-          window.location.href = '/dashboard';
-        }, 100); // 100ms di ritardo
+        console.log("[LOGIN PAGE] Rilevato evento SIGNED_IN. Eseguo redirect hard a /dashboard.");
+        window.location.href = '/dashboard';
       }
     });
 
-    // Controlliamo anche lo stato iniziale all'avvio.
-    // Se l'utente arriva sulla pagina di login ma ha già una sessione valida,
-    // lo reindirizziamo subito alla dashboard.
-    const checkInitialSession = async () => {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-            console.log("[LOGIN PAGE] Trovata una sessione esistente al caricamento della pagina. Reindirizzo.");
-            window.location.href = '/dashboard';
-        } else {
-            console.log("[LOGIN PAGE] Nessuna sessione iniziale trovata.");
-        }
-    }
-    checkInitialSession();
-
-    // Puliamo il listener quando il componente viene smontato.
     return () => {
-      console.log("[LOGIN PAGE] Smonto il componente. Pulisco il listener.");
       authListener.subscription.unsubscribe();
     };
-  }, [supabase]); // La dipendenza assicura che l'effetto venga eseguito una sola volta.
- 
+  }, [supabase]);
 
+  // Se stiamo ancora verificando la sessione iniziale, mostriamo un loader
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Altrimenti, mostriamo il contenuto normale
   return (
     <div className="flex items-center justify-center min-h-screen p-4 bg-background">
       <div className="w-full max-w-sm space-y-6">
-
         <div className="flex flex-col items-center space-y-2 text-center">
           <div className="flex items-center gap-2">
             <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
@@ -68,13 +64,7 @@ export default function LoginPage() {
             <h1 className="text-2xl font-bold tracking-tight text-foreground dark:text-white">{siteConfig.name}</h1>
           </div>
         </div>
-
-        {/* 
-          Il LoginForm si occupa solo di fare la chiamata a Supabase.
-          Il reindirizzamento è gestito dall'useEffect di questa pagina.
-        */}
         <LoginForm />
-
       </div>
     </div>
   );
