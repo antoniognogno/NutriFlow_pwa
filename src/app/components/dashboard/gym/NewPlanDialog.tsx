@@ -197,7 +197,7 @@ export function NewPlanDialog({ mode, planToEdit, onSaveSuccess }: NewPlanDialog
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
           {mode === 'create' ? (
-            <Button><PlusCircle className="mr-2 h-4 w-4" />Nuova Scheda</Button>
+            <Button className=" dark:text-white"><PlusCircle className="mr-2 h-4 w-4" />Nuova Scheda</Button>
           ) : (
             <Button variant="ghost" disabled size="icon" className="h-7 w-7"><Pencil className="h-4 w-4" /></Button>
           )}
@@ -272,7 +272,7 @@ export function NewPlanDialog({ mode, planToEdit, onSaveSuccess }: NewPlanDialog
           </div>
           <DialogFooter className="mt-auto pt-4 border-t">
             <DialogClose asChild><Button variant="ghost">Annulla</Button></DialogClose>
-            <Button onClick={handleSubmit} disabled={isSaving}>
+            <Button className="dark:text-white" onClick={handleSubmit} disabled={isSaving}>
               {isSaving ? "Salvataggio..." : (mode === 'edit' ? 'Salva Modifiche' : 'Crea Scheda')}
             </Button>
           </DialogFooter>

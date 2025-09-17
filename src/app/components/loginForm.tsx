@@ -96,7 +96,10 @@ export function LoginForm({
                 {error && (
                   <p className="text-sm font-medium text-red-500 text-center">{error}</p>
                 )}
-                <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+                <Button
+                  type="submit"
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-white dark:hover:bg-primary/80"
+                >
                   Accedi
                 </Button>
               </div>

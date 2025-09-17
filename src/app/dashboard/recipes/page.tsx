@@ -176,7 +176,7 @@ export default function RecipesPage() {
               <div className="flex items-center space-x-2"><RadioGroupItem value="salato" id="r-salty" /><Label htmlFor="r-salty">Salato</Label></div>
             </RadioGroup>
           </div>
-          <Button size="lg" className="w-full" onClick={handleGeneratePlan} disabled={isLoading || !userId || !!regeneratingMeal}>
+          <Button size="lg" className="w-full dark:text-white" onClick={handleGeneratePlan} disabled={isLoading || !userId || !!regeneratingMeal}>
             {isLoading ? "L&apos;IA sta cucinando per te..." : <><Sparkles className="mr-2 h-5 w-5" /> Genera il mio piano</>}
           </Button>
         </CardContent>
