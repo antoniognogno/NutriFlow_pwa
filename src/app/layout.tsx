@@ -1,12 +1,18 @@
 // src/app/layout.tsx
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+
+// Importa i componenti Provider che abbiamo creato/discusso
 import { ThemeProvider } from "@/components/theme-provider"; 
+import { TransitionProvider } from '@/app/context/TransitionContext';
+import { PageLoader } from '@/app/components/PageLoader';
+import { Toaster } from "@/components/ui/sonner"; // <<< Aggiungiamo il Toaster per le notifiche
 
 const inter = Inter({ subsets: ["latin"] });
 
+// L'oggetto metadata è corretto, lo lasciamo così
 export const metadata: Metadata = {
   title: "NutriFlow",
   description: "Il tuo assistente personale per il benessere.",
@@ -18,10 +24,15 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
 };
 
-export const viewport = {
+// L'oggetto viewport è corretto, ma possiamo migliorarlo per i colori del tema
+export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: [ // <<< Un modo più robusto per gestire i colori del tema
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' }, // o il tuo colore di sfondo scuro
+  ],
 };
 
 export default function RootLayout({
@@ -30,22 +41,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // Controlla che 'suppressHydrationWarning' sia presente
     <html lang="it" suppressHydrationWarning>
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/icons/ios/180.png" /> 
-        <meta name="theme-color" content="#ffffff" />
-      </head> 
+      
+      {/* Non c'è più bisogno del <head> manuale, Next.js lo gestisce con metadata e viewport */}
+
       <body className={inter.className}>
-        {/* Controlla che ThemeProvider avvolga {children} con queste esatte props */}
+        {/*
+          La struttura corretta dei provider è "a matrioska":
+          quelli più esterni avvolgono quelli più interni.
+        */}
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <TransitionProvider>
+            <PageLoader /> {/* Il loader vive qui, fuori dai children */}
+            {children}
+            <Toaster /> {/* Posizioniamo il Toaster qui per le notifiche globali */}
+          </TransitionProvider>
         </ThemeProvider>
       </body>
     </html>
