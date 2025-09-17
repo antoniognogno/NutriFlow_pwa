@@ -23,32 +23,35 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
 
-  const router = useRouter()
   const supabase = createClient()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   // Funzione di login SEMPLIFICATA
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setError(null)
+  const [isLoading, setIsLoading] = useState(false); // <<< Aggiungiamo uno stato di caricamento per la UX
 
-    const { error } = await supabase.auth.signInWithPassword({
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true); // <<< Attiva il loader
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email,
       password: password,
     });
 
-    if (error) {
-      setError("Credenziali non valide. Riprova.")
+    if (signInError) {
+      setError("Credenziali non valide. Riprova.");
+      setIsLoading(false); // <<< Disattiva il loader in caso di errore
       return;
     }
 
-    // Se il login ha successo, reindirizziamo semplicemente alla dashboard.
-    // Il MIDDLEWARE si occuperà di mandare l'utente al posto giusto
-    // (/dashboard se ha completato l'onboarding, /onboarding altrimenti).
-    router.push('/dashboard');
-    router.refresh(); // Forza un refresh dei dati del server
+    // <<< SOLUZIONE CHIAVE: Reindirizzamento "Hard"
+    // Questo forza un ricaricamento completo della pagina, assicurando
+    // che il cookie di sessione sia letto correttamente dal browser
+    // prima che il middleware di protezione della dashboard si attivi.
+    window.location.href = '/dashboard';
   }
 
   return (
@@ -85,9 +88,9 @@ export function LoginForm({
                       Dimenticata?
                     </Link>
                   </div>
-                  <Input 
-                    id="password" 
-                    type="password" 
+                  <Input
+                    id="password"
+                    type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -98,12 +101,13 @@ export function LoginForm({
                 )}
                 <Button
                   type="submit"
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-white dark:hover:bg-primary/80"
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-white dark:hover:bg-primary/80" // Rimosso stili duplicati per pulizia
+                  disabled={isLoading} // <<< Disabilita il bottone durante il caricamento
                 >
-                  Accedi
+                  {isLoading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
               </div>
-              
+
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />
