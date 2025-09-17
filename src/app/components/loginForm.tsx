@@ -26,7 +26,7 @@ import React from "react"; // React viene importato implicitamente, ma lasciarlo
 export function LoginForm() { // Non riceve più props come className, quindi le rimuoviamo dalla firma
   const supabase = createClient();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
