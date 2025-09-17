@@ -32,34 +32,26 @@ export function LoginForm({
   const [isLoading, setIsLoading] = useState(false); // <<< Aggiungiamo uno stato di caricamento per la UX
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setError(null);
-  setIsLoading(true);
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
 
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: email,
-    password: password,
-  });
+    // Esegui la chiamata di login
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
 
-  // Ferma il caricamento subito dopo la chiamata, così vediamo i risultati
-  setIsLoading(false); 
+    setIsLoading(false); // Disattiva il loader in ogni caso
 
-  if (signInError) {
-    // <<< AZIONE DI DEBUG CHIAVE
-    // Logghiamo l'errore REALE di Supabase nella console del browser.
-    console.error("Errore dettagliato da Supabase:", signInError);
-    
-    // Mostriamo un messaggio di errore più specifico all'utente.
-    // Questo ci aiuterà a capire se è un problema di rete o di credenziali.
-    setError(`Login fallito: ${signInError.message}`);
-    
-    return;
-  }
-  
-  // Se arriviamo qui, il login è andato a buon fine
-  console.log("Login avvenuto con successo! Inizio il reindirizzamento...");
-  window.location.href = '/dashboard';
-}
+    if (error) {
+      // Se c'è un errore, mostralo e basta.
+      console.error("Errore di login:", error.message);
+      setError("Credenziali non valide. Riprova.");
+    }
+    // Se il login ha successo, NON FARE NULLA.
+    // L'useEffect nella pagina genitore rileverà l'evento 'SIGNED_IN' e gestirà il reindirizzamento.
+  };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
