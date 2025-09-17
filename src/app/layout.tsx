@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"; 
-import "../register-sw";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -32,7 +31,12 @@ export default function RootLayout({
 }) {
   return (
     // Controlla che 'suppressHydrationWarning' sia presente
-    <html lang="it" suppressHydrationWarning> 
+    <html lang="it" suppressHydrationWarning>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icons/ios/180.png" /> 
+        <meta name="theme-color" content="#ffffff" />
+      </head> 
       <body className={inter.className}>
         {/* Controlla che ThemeProvider avvolga {children} con queste esatte props */}
         <ThemeProvider

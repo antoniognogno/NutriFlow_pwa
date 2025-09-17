@@ -1,72 +1,35 @@
-import { NextResponse, type NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/middleware'
+// src/middleware.ts (versione corretta e sicura)
 
-export async function middleware(request: NextRequest) {
-  try {
-    const { supabase, response } = createClient(request)
-    const { data: { session } } = await supabase.auth.getSession()
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-    const user = session?.user
-    const pathname = request.nextUrl.pathname
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
 
-    const authRoutes = ['/login', '/signup']
-    const isAuthRoute = authRoutes.some(route => pathname.startsWith(route))
+  // Rinfresca la sessione. È importante, ma non usiamo il suo `user` object per la sicurezza.
+  await supabase.auth.getSession();
 
-    // --- LOGICA PER UTENTE NON AUTENTICATO ---
-    if (!user) {
-      // Se NON è una rotta di autenticazione, reindirizza al login
-      if (!isAuthRoute) {
-        return NextResponse.redirect(new URL('/login', request.url))
-      }
-      // Se è una rotta di autenticazione, lascialo passare
-      return response
-    }
+  // <<< CORREZIONE DI SICUREZZA: Usiamo getUser() per la logica di protezione
+  const { data: { user } } = await supabase.auth.getUser();
 
-    // --- LOGICA PER UTENTE AUTENTICATO ---
-    
-    // Se è loggato e prova ad andare a login/signup, reindirizza alla dashboard
-    if (isAuthRoute) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-    
-    // Controlliamo lo stato dell'onboarding per tutte le altre rotte
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', user.id)
-      .single()
-    
-    const onboardingComplete = profile?.username != null;
-
-    // Se l'onboarding non è completo e non è sulla pagina di onboarding, reindirizza
-    if (!onboardingComplete && pathname !== '/onboarding') {
-      return NextResponse.redirect(new URL('/onboarding', request.url))
-    }
-    
-    // Se l'onboarding è completo e prova ad andare alla pagina di onboarding, reindirizza
-    if (onboardingComplete && pathname === '/onboarding') {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-
-    // Se tutti i controlli passano, lascia proseguire la richiesta
-    return response
-
-  } catch (e) {
-    // In caso di errore, reindirizza al login per sicurezza
-    return NextResponse.redirect(new URL('/login', request.url))
+  // Se l'utente non è loggato e cerca di accedere a /dashboard, reindirizza a /login
+  if (!user && req.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', req.url));
   }
+
+  // Se l'utente è loggato e cerca di accedere a /login o /signup, reindirizza a /dashboard
+  if (user && (req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/signup'))) {
+      return NextResponse.redirect(new URL('/dashboard', req.url));
+  }
+
+  return res;
 }
 
+// Assicurati che il matcher sia quello corretto
 export const config = {
   matcher: [
-    /*
-     * Abbina tutti i percorsi delle richieste tranne quelli che iniziano con:
-     * - api (chiamate API)
-     * - _next/static (file statici)
-     * - _next/image (ottimizzazione immagini)
-     * - favicon.ico (icona del sito)
-     * - auth/callback (rotta di callback di Supabase)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico|auth/callback).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|icons|manifest.json).*)',
   ],
-}
+};
