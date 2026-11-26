@@ -12,6 +12,7 @@ import {
   ClipboardPaste,
   Clock3,
   Copy,
+  HelpCircle,
   Link2,
   PlusCircle,
   SlidersHorizontal,
@@ -31,6 +32,7 @@ import {
   GEMINI_FORMAT_GUIDE,
   parseAiWorkoutPlan,
 } from '@/features/workouts/aiPlanParser'
+import { ExerciseGuideDialog } from '@/features/workouts/ExerciseGuideDialog'
 import { ExerciseNameField } from '@/features/workouts/ExerciseNameField'
 import { readExerciseMeta, saveExerciseMeta } from '@/features/workouts/exerciseNotesStore'
 import { findCachedPlan, upsertCachedPlan } from '@/features/workouts/workoutOfflineCache'
@@ -131,6 +133,7 @@ export default function PlanBuilderPage() {
   const [aiCustomEquipment, setAiCustomEquipment] = useState('')
   const [aiExcludedExercises, setAiExcludedExercises] = useState('')
   const [aiRawText, setAiRawText] = useState('')
+  const [guideExercise, setGuideExercise] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(isEditMode)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -932,16 +935,16 @@ export default function PlanBuilderPage() {
                     exercise.supersetGroup ? 'border-amber-400/60 border-l-4 border-l-amber-400' : 'border-border/70'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <CardTitle className="font-mono text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <CardTitle className="shrink-0 font-mono text-xs text-muted-foreground">
                         Esercizio #{exIndex + 1}
                       </CardTitle>
                       {exercise.supersetGroup && (
                         <button
                           type="button"
                           onClick={() => unlinkSuperset(wIndex, exIndex)}
-                          className="inline-flex items-center gap-1 rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-950 hover:bg-amber-200"
+                          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-950 hover:bg-amber-200"
                           title="Tocca per scollegare dalla superserie"
                         >
                           Superserie {exercise.supersetGroup}
@@ -950,6 +953,18 @@ export default function PlanBuilderPage() {
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
+                      {exercise.exercise_name.trim() && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Guida esercizio e macchinario per ${exercise.exercise_name}`}
+                          className="size-8 rounded-lg text-primary hover:bg-primary/15"
+                          onClick={() => setGuideExercise(exercise.exercise_name)}
+                        >
+                          <HelpCircle className="size-3.5" />
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
@@ -1063,7 +1078,7 @@ export default function PlanBuilderPage() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className={`h-7 rounded-lg px-2 text-[11px] font-semibold ${
+                        className={`h-7 shrink-0 whitespace-nowrap rounded-lg px-2 text-[11px] font-semibold ${
                           linkedWithNext
                             ? 'bg-amber-300 text-amber-950 hover:bg-amber-200'
                             : 'text-amber-400 hover:bg-amber-500/15'
@@ -1124,6 +1139,14 @@ export default function PlanBuilderPage() {
         <Check className="mr-1.5 size-4" />
         {isSaving ? 'Salvataggio...' : isEditMode ? 'Salva modifiche scheda' : 'Salva nuova scheda'}
       </Button>
+
+      <ExerciseGuideDialog
+        exerciseName={guideExercise}
+        open={Boolean(guideExercise)}
+        onOpenChange={open => {
+          if (!open) setGuideExercise(null)
+        }}
+      />
     </form>
   )
 }

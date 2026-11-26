@@ -23,6 +23,9 @@ describe('Gemini AI Workout Plan Parser', () => {
     expect(full).toContain('ESCLUDI ASSOLUTAMENTE questi esercizi')
     expect(full).toContain('Stacchi da terra')
     expect(GEMINI_APPEND_FORMAT_PROMPT).toContain('# Nome della Scheda')
+    expect(GEMINI_APPEND_FORMAT_PROMPT).toContain('Incline Dumbbell Press')
+    expect(full).toContain('Wide-Grip Lat Pulldown')
+    expect(full).toContain('Leg Press')
     expect(GEMINI_EXAMPLE_OUTPUT).toContain('## Giorno:')
   })
 

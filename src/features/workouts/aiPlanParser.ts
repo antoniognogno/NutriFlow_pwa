@@ -1,3 +1,5 @@
+import { GEMINI_DB_EXERCISE_NAMES } from './exerciseGuide'
+
 export interface ParsedAiExercise {
   exercise_name: string
   target_sets: string
@@ -22,13 +24,19 @@ export const GEMINI_FORMAT_GUIDE = `# Nome Scheda
 ## Giorno: Nome del Giorno
 - Nome Esercizio | 4x8-10 | Rec: 120s | RIR 2 | SS: A | Nota: opzionale`
 
-export const GEMINI_APPEND_FORMAT_PROMPT = `IMPORTANTE: Alla fine della tua risposta formatta TUTTA la scheda ESATTAMENTE con questa sintassi (una riga per esercizio; Rec, RIR, SS e Nota sono opzionali; usa lo stesso codice SS su due esercizi consecutivi per le superserie):
+const GEMINI_DB_CATALOG_TEXT = GEMINI_DB_EXERCISE_NAMES.join('\n- ')
+
+export const GEMINI_APPEND_FORMAT_PROMPT = `IMPORTANTE:
+1) Per il nome degli esercizi, usa ESATTAMENTE uno dei nomi di questo elenco del database foto (free-exercise-db) oppure il corrispondente nome ufficiale inglese di free-exercise-db tra parentesi, così l'app mostrerà foto, esecuzione e macchinario corretti:
+- ${GEMINI_DB_CATALOG_TEXT}
+
+2) Alla fine della tua risposta formatta TUTTA la scheda ESATTAMENTE con questa sintassi (una riga per esercizio; Rec, RIR, SS e Nota sono opzionali; usa lo stesso codice SS su due esercizi consecutivi per le superserie):
 
 # Nome della Scheda
 ## Giorno: Giorno 1 - Nome
-- Nome Esercizio | 4x8-10 | Rec: 120s | RIR 2 | Nota: opzionale
-- Esercizio A | 3x12 | Rec: 60s | SS: A
-- Esercizio B | 3x12 | Rec: 60s | SS: A`
+- Panca Piana Bilanciere | 4x8-10 | Rec: 120s | RIR 2 | Nota: opzionale
+- Alzate Laterali | 3x12 | Rec: 60s | SS: A
+- Pushdown Tricipiti Corda | 3x12 | Rec: 60s | SS: A`
 
 export interface GeminiPromptBuilderOptions {
   goal: string

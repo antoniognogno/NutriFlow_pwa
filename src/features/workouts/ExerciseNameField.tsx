@@ -84,6 +84,9 @@ export function ExerciseNameField({
             >
               <Camera className="size-3 shrink-0 text-emerald-900" />
               <span className="truncate">{item.label}</span>
+              <span className="shrink-0 text-[9.5px] font-normal text-emerald-950/75">
+                · {item.equipment.split('+')[0].split('(')[0].trim()}
+              </span>
             </button>
           ))}
         </div>

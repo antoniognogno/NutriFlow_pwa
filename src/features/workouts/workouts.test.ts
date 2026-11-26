@@ -117,6 +117,19 @@ describe('Workouts & Cardio Module', () => {
 
     expect(hasExercisePhotoMatch('Panca Piana')).toBe(true)
     expect(hasExercisePhotoMatch('Esercizio Inventato Xyz')).toBe(false)
+
+    // Verifica coerenza esatta nomi <-> DB foto senza collisioni di keyword
+    expect(findCuratedGuide('Panca Inclinata Manubri')?.id).toBe('Incline_Dumbbell_Press')
+    expect(findCuratedGuide('Panca Inclinata Bilanciere')?.id).toBe('Barbell_Incline_Bench_Press_-_Medium_Grip')
+    expect(findCuratedGuide('Leg Press')?.id).toBe('Leg_Press')
+    expect(findCuratedGuide('Squat con Bilanciere')?.id).toBe('Barbell_Squat')
+    expect(findCuratedGuide('Trazioni alla Sbarra')?.id).toBe('Pullups')
+    expect(findCuratedGuide('Lat Machine')?.id).toBe('Wide-Grip_Lat_Pulldown')
+    expect(findCuratedGuide('Leg Curl')?.id).toBe('Seated_Leg_Curl')
+    expect(findCuratedGuide('Plank')?.id).toBe('Plank')
+    expect(findCuratedGuide('Stacco da Terra')?.id).toBe('Barbell_Deadlift')
+    expect(findCuratedGuide('Stacco Rumeno')?.id).toBe('Romanian_Deadlift')
+
     const suggestions = searchExerciseSuggestions('panca')
     expect(suggestions.length).toBeGreaterThanOrEqual(2)
     expect(suggestions[0].label).toContain('Panca')
