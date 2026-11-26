@@ -87,7 +87,18 @@ export function readTrashItems(now: number = Date.now()): TrashItem[] {
 }
 
 export function writeTrashItems(items: TrashItem[]): void {
-  localStorage.setItem(TRASH_STORAGE_KEY, JSON.stringify(items))
+  const serialized = JSON.stringify(items)
+  try {
+    localStorage.setItem(TRASH_STORAGE_KEY, serialized)
+  } catch (error) {
+    // Free cached per-session sets snapshot first if localStorage quota is tight on mobile
+    try {
+      localStorage.removeItem('nutriflow:cached-sets-v1')
+      localStorage.setItem(TRASH_STORAGE_KEY, serialized)
+    } catch {
+      throw error
+    }
+  }
   markCloudStateDirty()
 }
 

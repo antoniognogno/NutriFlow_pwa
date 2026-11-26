@@ -4,6 +4,16 @@ import { useEffect, useRef, useState } from 'react'
 import { BookmarkPlus, Footprints, Pencil, Play, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { focusAndScrollToElement } from '@/lib/focusScroll'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -31,6 +41,7 @@ export function QuickCardioCard({ onTrashChange }: QuickCardioCardProps) {
   const [distanceKm, setDistanceKm] = useState('5')
   const [minutes, setMinutes] = useState('30')
   const [isSaving, setIsSaving] = useState(false)
+  const [pendingTrashPreset, setPendingTrashPreset] = useState<CardioPreset | null>(null)
   const presetLabelInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -180,7 +191,7 @@ export function QuickCardioCard({ onTrashChange }: QuickCardioCardProps) {
                   size="icon"
                   className="size-9 shrink-0 rounded-xl text-amber-400/80 hover:bg-amber-500/15 hover:text-amber-400"
                   aria-label={`Sposta ${preset.label} nel cestino`}
-                  onClick={() => trashPreset(preset)}
+                  onClick={() => setPendingTrashPreset(preset)}
                 >
                   <Trash2 className="size-3.5" />
                 </Button>
@@ -259,6 +270,39 @@ export function QuickCardioCard({ onTrashChange }: QuickCardioCardProps) {
           </Button>
         </div>
       </CardContent>
+
+      <AlertDialog
+        open={pendingTrashPreset !== null}
+        onOpenChange={open => {
+          if (!open) setPendingTrashPreset(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Spostare “{pendingTrashPreset?.label}” nel cestino?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Il preset cardio ({pendingTrashPreset?.distanceKm} km · {pendingTrashPreset?.minutes} min) verrà spostato nel cestino per 30 giorni, dove potrai ripristinarlo o eliminarlo definitivamente. Sei sicuro?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-500"
+              onClick={() => {
+                const target = pendingTrashPreset
+                setPendingTrashPreset(null)
+                if (target) {
+                  trashPreset(target)
+                }
+              }}
+            >
+              Sposta nel cestino
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

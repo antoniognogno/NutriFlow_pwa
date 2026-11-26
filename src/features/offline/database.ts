@@ -163,6 +163,17 @@ type OutboxItem =
       attempts: number
       lastError?: string
     }
+  | {
+      id: string
+      userId: string
+      table: 'workout_sessions_delete'
+      payload: {
+        session_id: string
+      }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 

@@ -149,6 +149,19 @@ async function syncItem(supabase: ReturnType<typeof createClient>, item: OutboxI
         .delete()
         .eq('id', item.payload.plan_id)
         .eq('user_id', item.userId)
+    case 'workout_sessions_delete': {
+      const { error: setsError } = await supabase
+        .from('workout_sets')
+        .delete()
+        .eq('session_id', item.payload.session_id)
+        .eq('user_id', item.userId)
+      if (setsError) return { error: setsError }
+      return supabase
+        .from('workout_sessions')
+        .delete()
+        .eq('id', item.payload.session_id)
+        .eq('user_id', item.userId)
+    }
   }
 }
 

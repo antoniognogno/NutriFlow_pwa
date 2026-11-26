@@ -129,18 +129,27 @@ export default function StatsPage() {
             .map(item => (item.payload as { id?: string }).id ?? '')
             .filter(Boolean),
         )
+        const pendingDeleteSessionIds = new Set(
+          pendingOutbox
+            .filter(item => item.table === 'workout_sessions_delete')
+            .map(item => item.payload.session_id)
+            .filter(Boolean),
+        )
 
         const mergedSessions = sessionsRes.data
           ? mergeRemoteAndCachedSessions(
               sessionsRes.data as EditableSession[],
               readCachedSessions(),
               pendingSessionIds,
+              pendingDeleteSessionIds,
             )
           : readCachedSessions()
 
         setSessions(mergedSessions)
 
-        const fetchedSets = (setsRes.data ?? []) as WorkoutSetRow[]
+        const fetchedSets = ((setsRes.data ?? []) as WorkoutSetRow[]).filter(
+          row => !(row.session_id && pendingDeleteSessionIds.has(row.session_id)),
+        )
         setRawSets(fetchedSets)
         setWeightLogs(readWeightLogs())
 

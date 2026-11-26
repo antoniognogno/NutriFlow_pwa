@@ -4,10 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Clock3, Dumbbell, Footprints, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { offlineDatabase } from '@/features/offline/database'
-import { moveToTrash, type SetRowSnapshot } from '@/features/trash/trashStore'
 import { createClient } from '@/lib/supabase/client'
 import { SessionEditor, type EditableSession, type EditableSet } from './SessionEditor'
 import {
@@ -15,9 +24,9 @@ import {
   mergeRemoteAndCachedSessions,
   readCachedSessions,
   readCachedSetsForSession,
-  removeCachedSession,
   saveCachedSessions,
 } from './workoutOfflineCache'
+import { moveWorkoutSessionToTrash, type TrashSessionSupabaseLike } from './workoutTrashHelper'
 import { formatDuration, isCardioSession } from './workoutUtils'
 
 export function WorkoutHistoryView() {
@@ -27,6 +36,7 @@ export function WorkoutHistoryView() {
   const [sessions, setSessions] = useState<EditableSession[]>(() => readCachedSessions())
   const [filter, setFilter] = useState<'cardio' | 'workouts'>('workouts')
   const [isLoading, setIsLoading] = useState(() => readCachedSessions().length === 0)
+  const [pendingTrashSession, setPendingTrashSession] = useState<EditableSession | null>(null)
   const [selectedSession, setSelectedSession] = useState<{
     session: EditableSession
     sets: EditableSet[]
@@ -56,9 +66,15 @@ export function WorkoutHistoryView() {
           .map(item => (item.payload as { id?: string }).id ?? '')
           .filter(Boolean),
       )
+      const pendingDeleteSessionIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_sessions_delete')
+          .map(item => item.payload.session_id)
+          .filter(Boolean),
+      )
 
       if (!navigator.onLine) {
-        setSessions(cached)
+        setSessions(cached.filter(row => !pendingDeleteSessionIds.has(row.id)))
         return
       }
 
@@ -74,11 +90,12 @@ export function WorkoutHistoryView() {
           data as EditableSession[],
           cached,
           pendingIds,
+          pendingDeleteSessionIds,
         )
         setSessions(merged)
         saveCachedSessions(merged)
       } else {
-        setSessions(cached)
+        setSessions(cached.filter(row => !pendingDeleteSessionIds.has(row.id)))
       }
     } catch {
       setSessions(readCachedSessions())
@@ -133,37 +150,24 @@ export function WorkoutHistoryView() {
   }
 
   const trashSession = async (item: EditableSession) => {
-    let setsSnapshot: EditableSet[] = readCachedSetsForSession(item.id)
-    if (navigator.onLine) {
-      const { data: setsData } = await supabase
-        .from('workout_sets')
-        .select('id, user_id, session_id, exercise_id, exercise_name, set_number, reps, weight_kg, completed_at')
-        .eq('session_id', item.id)
-      if (setsData && setsData.length > 0) {
-        setsSnapshot = setsData as EditableSet[]
-      }
-
-      const { error } = await supabase.from('workout_sessions').delete().eq('id', item.id)
-      if (error) {
-        toast.error('Impossibile spostare nel cestino.')
-        return
-      }
-    } else {
-      await offlineDatabase.outbox.delete(`workout_sessions:${item.id}`).catch(() => undefined)
+    try {
+      const outcome = await moveWorkoutSessionToTrash(item, {
+        supabase: supabase as unknown as TrashSessionSupabaseLike,
+        isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
+      })
+      setSessions(current => current.filter(row => row.id !== item.id))
+      toast.success(
+        outcome === 'offline'
+          ? 'Spostato nel cestino offline (verrà sincronizzato).'
+          : outcome === 'queued'
+            ? 'Spostato nel cestino (eliminazione cloud in coda sync).'
+            : 'Spostato nel cestino (30 giorni).',
+      )
+      window.dispatchEvent(new Event('nutriflow:data-updated'))
+    } catch (error) {
+      console.error('Impossibile spostare la sessione nel cestino:', error)
+      toast.error('Impossibile spostare nel cestino.')
     }
-
-    removeCachedSession(item.id)
-    moveToTrash({
-      id: `workout_session:${item.id}`,
-      kind: 'workout_session',
-      title: item.workout_name,
-      subtitle: `${Math.max(1, Math.round((item.duration_seconds || 0) / 60))} min · ${new Date(item.started_at).toLocaleDateString('it-IT')}`,
-      session: item,
-      sets: setsSnapshot as SetRowSnapshot[],
-    })
-    setSessions(current => current.filter(row => row.id !== item.id))
-    toast.success('Spostato nel cestino (30 giorni).')
-    window.dispatchEvent(new Event('nutriflow:data-updated'))
   }
 
   if (selectedSession) {
@@ -282,7 +286,7 @@ export function WorkoutHistoryView() {
                     size="icon"
                     aria-label={`Sposta ${item.workout_name} nel cestino`}
                     className="size-9 rounded-xl text-amber-400/80 hover:bg-amber-500/15 hover:text-amber-400"
-                    onClick={() => void trashSession(item)}
+                    onClick={() => setPendingTrashSession(item)}
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -292,6 +296,39 @@ export function WorkoutHistoryView() {
           ))}
         </div>
       )}
+
+      <AlertDialog
+        open={pendingTrashSession !== null}
+        onOpenChange={open => {
+          if (!open) setPendingTrashSession(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Spostare “{pendingTrashSession?.workout_name}” nel cestino?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Stai per spostare questa sessione dallo storico al cestino. Potrai comunque ripristinarla entro 30 giorni oppure eliminarla definitivamente da lì. Sei sicuro?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-500"
+              onClick={() => {
+                const target = pendingTrashSession
+                setPendingTrashSession(null)
+                if (target) {
+                  void trashSession(target)
+                }
+              }}
+            >
+              Sposta nel cestino
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

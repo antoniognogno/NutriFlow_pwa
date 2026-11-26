@@ -188,17 +188,19 @@ export function mergeRemoteAndCachedSessions(
   remoteSessions: EditableSession[],
   localCachedSessions: EditableSession[] = readCachedSessions(),
   pendingOutboxSessionIds: Set<string> = new Set(),
+  pendingDeleteSessionIds: Set<string> = new Set(),
 ): EditableSession[] {
   const merged = new Map<string, EditableSession>()
   for (const r of remoteSessions) {
-    merged.set(r.id, r)
+    if (!pendingDeleteSessionIds.has(r.id)) {
+      merged.set(r.id, r)
+    }
   }
   for (const local of localCachedSessions) {
+    if (pendingDeleteSessionIds.has(local.id)) continue
     // Preserve sessions created or modified while offline that aren't in remote yet
-    if (!merged.has(local.id) && (pendingOutboxSessionIds.has(local.id) || pendingOutboxSessionIds.size === 0)) {
-      if (pendingOutboxSessionIds.has(local.id)) {
-        merged.set(local.id, local)
-      }
+    if (!merged.has(local.id) && pendingOutboxSessionIds.has(local.id)) {
+      merged.set(local.id, local)
     } else if (pendingOutboxSessionIds.has(local.id)) {
       merged.set(local.id, local)
     }
@@ -254,6 +256,12 @@ export async function warmWorkoutOfflineCache(): Promise<void> {
           .map(item => item.payload.id)
           .filter((id): id is string => Boolean(id)),
       )
+      const pendingDeleteSessionIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_sessions_delete')
+          .map(item => item.payload.session_id)
+          .filter(Boolean),
+      )
 
       if (!plansRes.error && plansRes.data) {
         const mergedPlans = mergeRemoteAndCachedPlans(
@@ -272,6 +280,7 @@ export async function warmWorkoutOfflineCache(): Promise<void> {
           sessionsRes.data as EditableSession[],
           readCachedSessions(),
           pendingSessionIds,
+          pendingDeleteSessionIds,
         )
         saveCachedSessions(mergedSessions)
       }

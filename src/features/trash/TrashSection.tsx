@@ -3,10 +3,21 @@
 import { useState } from 'react'
 import { RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { queueAndSync } from '@/features/offline/useOfflineSync'
+import { queueAndSync, removeOutboxItem } from '@/features/offline/useOfflineSync'
+import { upsertCachedSession } from '@/features/workouts/workoutOfflineCache'
 import {
   readCardioPresets,
   readWorkoutPresets,
@@ -39,10 +50,17 @@ function kindLabel(kind: TrashItem['kind']): string {
   }
 }
 
+type PendingTrashConfirm =
+  | { type: 'restore'; item: TrashItem }
+  | { type: 'delete_one'; item: TrashItem }
+  | { type: 'empty_all' }
+  | null
+
 export function TrashSection({ onRestored }: TrashSectionProps) {
   const supabase = createClient()
   const [items, setItems] = useState<TrashItem[]>(() => readTrashItems())
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<PendingTrashConfirm>(null)
 
   const refreshTrash = () => {
     setItems(readTrashItems())
@@ -61,6 +79,8 @@ export function TrashSection({ onRestored }: TrashSectionProps) {
         const current = readWorkoutPresets().filter(p => p.id !== item.preset.id)
         saveWorkoutPresets([item.preset, ...current])
       } else if (item.kind === 'workout_session') {
+        await removeOutboxItem(`workout_sessions_delete:${item.session.id}`).catch(() => undefined)
+        upsertCachedSession(item.session, item.sets)
         await queueAndSync({
           id: `workout_sessions:${item.session.id}`,
           userId: item.session.user_id,
@@ -157,7 +177,7 @@ export function TrashSection({ onRestored }: TrashSectionProps) {
           variant="ghost"
           size="sm"
           className="h-8 shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-2.5 text-xs text-red-400 hover:bg-red-500/20 hover:text-red-300"
-          onClick={handleEmptyTrash}
+          onClick={() => setConfirmAction({ type: 'empty_all' })}
         >
           Svuota cestino
         </Button>
@@ -188,7 +208,7 @@ export function TrashSection({ onRestored }: TrashSectionProps) {
                   size="sm"
                   disabled={busyId === item.id}
                   className="h-9 rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-2.5 text-xs text-emerald-400 hover:bg-emerald-500/25"
-                  onClick={() => void handleRestore(item)}
+                  onClick={() => setConfirmAction({ type: 'restore', item })}
                 >
                   <RotateCcw className="mr-1 size-3.5" />
                   Ripristina
@@ -200,7 +220,7 @@ export function TrashSection({ onRestored }: TrashSectionProps) {
                   disabled={busyId === item.id}
                   aria-label={`Elimina definitivamente ${item.title}`}
                   className="size-9 rounded-xl text-red-400/80 hover:bg-red-500/15 hover:text-red-400"
-                  onClick={() => handlePermanentDelete(item)}
+                  onClick={() => setConfirmAction({ type: 'delete_one', item })}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -209,6 +229,68 @@ export function TrashSection({ onRestored }: TrashSectionProps) {
           </Card>
         ))}
       </div>
+
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={open => {
+          if (!open) setConfirmAction(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === 'restore'
+                ? `Ripristinare "${confirmAction.item.title}"?`
+                : confirmAction?.type === 'delete_one'
+                  ? `Eliminare definitivamente "${confirmAction.item.title}"?`
+                  : `Svuotare il cestino (${items.length} ${items.length === 1 ? 'elemento' : 'elementi'})?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === 'restore' ? (
+                <>
+                  L’elemento ({kindLabel(confirmAction.item.kind)}) verrà rimesso nella sua sezione originale. Sei sicuro di volerlo ripristinare?
+                </>
+              ) : confirmAction?.type === 'delete_one' ? (
+                <>
+                  Stai per eliminare definitivamente <strong className="text-foreground">1 elemento</strong> dal cestino. Questa azione è irreversibile e non potrà essere annullata. Sei sicuro?
+                </>
+              ) : (
+                <>
+                  Stai per eliminare definitivamente <strong className="text-foreground">{items.length} {items.length === 1 ? 'elemento' : 'elementi'}</strong> presenti nel cestino. Tutti questi elementi andranno persi per sempre. Sei sicuro?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                confirmAction?.type === 'restore'
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                  : 'bg-destructive text-white hover:bg-destructive/90'
+              }
+              onClick={() => {
+                const action = confirmAction
+                setConfirmAction(null)
+                if (!action) return
+                if (action.type === 'restore') {
+                  void handleRestore(action.item)
+                } else if (action.type === 'delete_one') {
+                  handlePermanentDelete(action.item)
+                } else {
+                  handleEmptyTrash()
+                }
+              }}
+            >
+              {confirmAction?.type === 'restore'
+                ? 'Conferma ripristino'
+                : confirmAction?.type === 'delete_one'
+                  ? 'Elimina definitivamente'
+                  : `Elimina tutti (${items.length})`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -11,6 +11,16 @@ import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types";
 import WorkoutSelector from "@/app/components/dashboard/gym/WorkoutSelector";
 import { NewPlanDialog } from "@/app/components/dashboard/gym/NewPlanDialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -70,6 +80,7 @@ export default function GymPage() {
   const [editingPreset, setEditingPreset] = useState<DefaultWorkout | null>(null);
   const [presetName, setPresetName] = useState('');
   const [presetExercises, setPresetExercises] = useState('');
+  const [pendingTrashPreset, setPendingTrashPreset] = useState<DefaultWorkout | null>(null);
   const presetNameInputRef = useRef<HTMLInputElement>(null);
 
   const [isLoading, setIsLoading] = useState(() => readCachedPlans().length === 0);
@@ -90,6 +101,7 @@ export default function GymPage() {
     removeStandbyWorkout(entry.workoutId);
     setStandbyWorkouts(readStandbyWorkouts());
     if (entry.sessionId) {
+      await supabase.from('workout_sets').delete().eq('session_id', entry.sessionId);
       await supabase.from('workout_sessions').delete().eq('id', entry.sessionId).is('ended_at', null);
     }
     toast.info(`Stand-by "${entry.workoutName}" annullato.`);
@@ -156,6 +168,11 @@ export default function GymPage() {
           .filter(item => item.table === 'workout_plans_delete')
           .map(item => item.payload.plan_id),
       );
+      const pendingDeleteSessionIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_sessions_delete')
+          .map(item => item.payload.session_id),
+      );
 
       if (!plansRes.error && plansRes.data) {
         const loadedPlans = mergeRemoteAndCachedPlans(
@@ -172,6 +189,7 @@ export default function GymPage() {
           sessionsRes.data as EditableSession[],
           readCachedSessions(),
           pendingSessionIds,
+          pendingDeleteSessionIds,
         );
         setCounts(countSessions(merged));
       }
@@ -514,7 +532,7 @@ export default function GymPage() {
                         size="icon"
                         className="size-9 rounded-xl text-amber-400/80 hover:bg-amber-500/15 hover:text-amber-400"
                         aria-label={`Sposta ${workout.name} nel cestino`}
-                        onClick={() => handleTrashPreset(workout)}
+                        onClick={() => setPendingTrashPreset(workout)}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
@@ -570,6 +588,39 @@ export default function GymPage() {
           </span>
         </div>
       </Link>
+
+      <AlertDialog
+        open={pendingTrashPreset !== null}
+        onOpenChange={open => {
+          if (!open) setPendingTrashPreset(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Spostare “{pendingTrashPreset?.name}” nel cestino?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Il preset di allenamento verrà spostato nel cestino per 30 giorni, da cui potrai ripristinarlo o eliminarlo definitivamente. Sei sicuro?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-500"
+              onClick={() => {
+                const target = pendingTrashPreset;
+                setPendingTrashPreset(null);
+                if (target) {
+                  handleTrashPreset(target);
+                }
+              }}
+            >
+              Sposta nel cestino
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

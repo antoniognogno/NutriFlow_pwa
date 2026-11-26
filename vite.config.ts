@@ -1,11 +1,45 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+) as { version?: string }
+
+const APP_VERSION = pkg.version ?? '0.1.0'
+const BUILT_AT = new Date().toISOString()
+const APP_BUILD_ID = BUILT_AT.slice(0, 16).replace(/[-:T]/g, '.')
+
+function versionManifestPlugin(): Plugin {
+  return {
+    name: 'nutriflow-version-manifest',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify(
+          {
+            version: APP_VERSION,
+            buildId: APP_BUILD_ID,
+            builtAt: BUILT_AT,
+          },
+          null,
+          2,
+        ),
+      })
+    },
+  }
+}
 
 export default defineConfig({
   envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __APP_BUILD_ID__: JSON.stringify(APP_BUILD_ID),
+  },
   css: {
     postcss: {
       plugins: [],
@@ -14,6 +48,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    versionManifestPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/android/android-launchericon-192-192.png'],
@@ -43,6 +78,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/assets\//, /^\/version\.json/],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

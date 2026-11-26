@@ -36,7 +36,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { APP_BUILD_ID, APP_VERSION } from '@/config/appVersion'
 import { siteConfig } from '@/config/attributes'
+import {
+  evaluateRestartRequirement,
+  type RemoteVersionInfo,
+  type RestartEvaluation,
+  type UpdateStage,
+} from '@/features/updates/appUpdateUtils'
+import { UpdateProgressModal } from '@/features/updates/UpdateProgressModal'
 import { createClient } from '@/lib/supabase/client'
 import { offlineDatabase } from '@/features/offline/database'
 import { queueAndSync } from '@/features/offline/useOfflineSync'
@@ -107,6 +115,14 @@ export default function SettingsPage() {
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateStatusText, setUpdateStatusText] = useState<string | null>(null)
+  const [updateModalOpen, setUpdateModalOpen] = useState(false)
+  const [updateStage, setUpdateStage] = useState<UpdateStage>('idle')
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateEstimateSec, setUpdateEstimateSec] = useState(4)
+  const [updateStepLabel, setUpdateStepLabel] = useState('Verifica versione...')
+  const [updateTargetVersion, setUpdateTargetVersion] = useState<string | null>(null)
+  const [restartEvaluation, setRestartEvaluation] = useState<RestartEvaluation | null>(null)
+  const [updateErrorText, setUpdateErrorText] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -278,64 +294,165 @@ export default function SettingsPage() {
     toast.success('Backup locale esportato.')
   }
 
+  const waitMs = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms))
+
+  const handleRestartAppNow = () => {
+    window.location.reload()
+  }
+
   const handleCheckUpdates = async () => {
     if (isCheckingUpdate) return
     if (!navigator.onLine) {
-      toast.warning('Connettiti a internet per cercare nuovi aggiornamenti.')
+      toast.warning(`Connettiti a internet per cercare aggiornamenti (versione attuale v${APP_VERSION}).`)
       return
     }
     setIsCheckingUpdate(true)
+    setUpdateModalOpen(true)
+    setUpdateStage('checking')
+    setUpdateProgress(12)
+    setUpdateEstimateSec(4)
+    setUpdateStepLabel(`Confronto versione corrente v${APP_VERSION}...`)
+    setUpdateTargetVersion(null)
+    setRestartEvaluation(null)
+    setUpdateErrorText(null)
+
     const nowTime = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+    let remoteInfo: RemoteVersionInfo | null = null
+    let hasWaitingWorker = false
+    let hasInstallingFinished = false
+    let controllerChanged = false
+
+    const handleControllerChange = () => {
+      controllerChanged = true
+    }
+
     try {
-      if (!('serviceWorker' in navigator)) {
-        setUpdateStatusText(`Controllato alle ${nowTime} · nessuna nuova versione`)
-        toast.info('NutriFlow è già aggiornato all’ultima versione.')
-        return
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
       }
 
-      const registration = await navigator.serviceWorker.getRegistration()
-      if (!registration) {
-        setUpdateStatusText(`Controllato alle ${nowTime} · versione corrente attiva`)
-        toast.info('Nessun aggiornamento in sospeso.')
-        return
-      }
-
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-        setUpdateStatusText('Aggiornamento trovato: riavvio...')
-        toast.success('Aggiornamento disponibile! Ricarico NutriFlow...')
-        window.setTimeout(() => window.location.reload(), 650)
-        return
-      }
-
-      await registration.update()
-      const waitingAfterUpdate = registration.waiting as ServiceWorker | null
-      const installingAfterUpdate = registration.installing as ServiceWorker | null
-      if (waitingAfterUpdate) {
-        toast.success('Nuova versione rilevata! Applico aggiornamento...')
-        setUpdateStatusText('Aggiornamento in applicazione...')
-        waitingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
-        window.setTimeout(() => window.location.reload(), 650)
-        return
-      }
-      if (installingAfterUpdate) {
-        toast.success('Nuova versione rilevata! Applico aggiornamento...')
-        setUpdateStatusText('Aggiornamento in applicazione...')
-        installingAfterUpdate.addEventListener('statechange', () => {
-          if (installingAfterUpdate.state === 'installed') {
-            installingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
-            window.setTimeout(() => window.location.reload(), 650)
+      // Step 1: check live version manifest
+      try {
+        const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+        if (res.ok) {
+          const parsed = (await res.json()) as Partial<RemoteVersionInfo>
+          if (typeof parsed.version === 'string' && typeof parsed.buildId === 'string') {
+            remoteInfo = {
+              version: parsed.version,
+              buildId: parsed.buildId,
+              builtAt: parsed.builtAt,
+            }
+            setUpdateTargetVersion(`${parsed.version} (${parsed.buildId})`)
           }
-        })
-        return
+        }
+      } catch {
+        // Offline/local dev preview might not expose /version.json; proceed with Service Worker check
       }
 
-      setUpdateStatusText(`Controllato alle ${nowTime} · app già aggiornata`)
-      toast.success('NutriFlow è già aggiornato all’ultima versione!')
+      setUpdateProgress(38)
+      setUpdateEstimateSec(3)
+      setUpdateStage('downloading')
+      setUpdateStepLabel('Controllo Service Worker e risorse PWA...')
+      await waitMs(380)
+
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration()
+        if (registration) {
+          if (registration.waiting) {
+            hasWaitingWorker = true
+          }
+          await registration.update().catch(() => undefined)
+          setUpdateProgress(65)
+          setUpdateEstimateSec(2)
+
+          const waitingAfterUpdate = registration.waiting as ServiceWorker | null
+          const installingAfterUpdate = registration.installing as ServiceWorker | null
+
+          if (waitingAfterUpdate) {
+            hasWaitingWorker = true
+            setUpdateStage('installing')
+            setUpdateProgress(84)
+            setUpdateEstimateSec(1)
+            setUpdateStepLabel('Attivazione nuova versione scaricata...')
+            waitingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
+            await waitMs(650)
+          } else if (installingAfterUpdate) {
+            setUpdateStage('installing')
+            setUpdateProgress(78)
+            setUpdateEstimateSec(2)
+            setUpdateStepLabel('Download nuovo pacchetto in corso...')
+
+            await new Promise<void>(resolve => {
+              const timeout = window.setTimeout(resolve, 4500)
+              installingAfterUpdate.addEventListener('statechange', () => {
+                if (installingAfterUpdate.state === 'installed') {
+                  hasInstallingFinished = true
+                  installingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
+                  setUpdateProgress(90)
+                  setUpdateEstimateSec(1)
+                  window.clearTimeout(timeout)
+                  window.setTimeout(resolve, 450)
+                } else if (installingAfterUpdate.state === 'activated') {
+                  hasInstallingFinished = true
+                  controllerChanged = true
+                  window.clearTimeout(timeout)
+                  resolve()
+                } else if (installingAfterUpdate.state === 'redundant') {
+                  window.clearTimeout(timeout)
+                  resolve()
+                }
+              })
+            })
+          } else {
+            await waitMs(280)
+          }
+        }
+      } else {
+        await waitMs(320)
+      }
+
+      // Step 3: post-update restart evaluation
+      setUpdateStage('evaluating')
+      setUpdateProgress(95)
+      setUpdateEstimateSec(1)
+      setUpdateStepLabel('Valutazione necessità riavvio app...')
+      await waitMs(260)
+
+      const evaluation = evaluateRestartRequirement({
+        hasWaitingWorker,
+        hasInstallingFinished,
+        controllerChanged,
+        localVersion: APP_VERSION,
+        localBuildId: APP_BUILD_ID,
+        remoteInfo,
+      })
+
+      setRestartEvaluation(evaluation)
+      setUpdateProgress(100)
+      setUpdateEstimateSec(0)
+
+      if (evaluation.shouldRestart) {
+        setUpdateStage('restart_required')
+        setUpdateStepLabel(`Aggiornamento v${evaluation.targetVersion} pronto`)
+        setUpdateStatusText(`Aggiornamento rilevato (${evaluation.targetVersion}) · riavvio consigliato`)
+        toast.success('Aggiornamento disponibile! Valuta il riavvio per applicarlo.')
+      } else {
+        setUpdateStage('up_to_date')
+        setUpdateStepLabel(`Versione v${APP_VERSION} verificata · nessun riavvio richiesto`)
+        setUpdateStatusText(`Controllato alle ${nowTime} · v${APP_VERSION} (${APP_BUILD_ID}) già aggiornata`)
+        toast.success(`NutriFlow v${APP_VERSION} è già aggiornato!`)
+      }
     } catch {
-      setUpdateStatusText(`Verifica completata alle ${nowTime}`)
-      toast.info('Nessun aggiornamento disponibile al momento.')
+      setUpdateStage('error')
+      setUpdateProgress(100)
+      setUpdateEstimateSec(0)
+      setUpdateStepLabel('Verifica non completata')
+      setUpdateErrorText('Impossibile contattare il server degli aggiornamenti al momento.')
+      setUpdateStatusText(`Verifica completata alle ${nowTime} · v${APP_VERSION}`)
     } finally {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
+      }
       setIsCheckingUpdate(false)
     }
   }
@@ -790,7 +907,12 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Tutorial & Aggiornamenti</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-base">Tutorial & Aggiornamenti</CardTitle>
+            <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-sky-400">
+              v{APP_VERSION} · {APP_BUILD_ID}
+            </span>
+          </div>
           <CardDescription className="text-xs">
             Rivedi le funzioni principali dell’app o controlla nuove versioni PWA
           </CardDescription>
@@ -814,7 +936,9 @@ export default function SettingsPage() {
             onClick={() => void handleCheckUpdates()}
           >
             <RefreshCw className={`mr-1.5 size-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-            {isCheckingUpdate ? 'Controllo aggiornamenti...' : 'Cerca aggiornamenti'}
+            {isCheckingUpdate
+              ? `Controllo v${APP_VERSION}...`
+              : `Cerca aggiornamenti (v${APP_VERSION})`}
           </Button>
 
           {updateStatusText && (
@@ -831,6 +955,21 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <UpdateProgressModal
+        open={updateModalOpen}
+        stage={updateStage}
+        progress={updateProgress}
+        estimatedSecondsLeft={updateEstimateSec}
+        currentVersion={APP_VERSION}
+        currentBuildId={APP_BUILD_ID}
+        targetVersion={updateTargetVersion}
+        stepLabel={updateStepLabel}
+        evaluation={restartEvaluation}
+        errorMessage={updateErrorText}
+        onRestartNow={handleRestartAppNow}
+        onClose={() => setUpdateModalOpen(false)}
+      />
 
       <Button
         type="button"

@@ -1,30 +1,32 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { TransitionProvider } from '@/app/context/TransitionContext'
+import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
 import DashboardLayout from '@/app/dashboard/layout'
+import { lazyWithRetry } from '@/lib/chunkRecovery'
 import { createClient } from '@/lib/supabase/client'
 
-// Route-level code splitting for faster mobile cold start (all chunks precached by VitePWA offline)
-const DashboardPage = lazy(() => import('@/app/dashboard/page'))
-const LoginPage = lazy(() => import('@/app/login/page'))
-const SignUpPage = lazy(() => import('@/app/signup/page'))
-const RoutinePage = lazy(() => import('@/app/dashboard/routine/page'))
-const GymPage = lazy(() => import('@/app/dashboard/gym/page'))
-const GymHistoryPage = lazy(() => import('@/app/dashboard/gym/history/page'))
-const GymTrashPage = lazy(() => import('@/app/dashboard/gym/trash/page'))
-const PlanBuilderPage = lazy(() => import('@/app/dashboard/gym/plan/PlanBuilderPage'))
-const WorkoutSessionPage = lazy(() => import('@/app/dashboard/gym/[workoutId]/page'))
-const NutritionPage = lazy(() => import('@/app/dashboard/nutrition/page'))
-const RecipesPage = lazy(() => import('@/app/dashboard/recipes/page'))
-const SettingsPage = lazy(() => import('@/app/dashboard/settings/page'))
-const StatsPage = lazy(() => import('@/app/dashboard/stats/page'))
-const WaterTrackerPage = lazy(() => import('@/app/dashboard/water/page'))
-const OnboardingPage = lazy(() => import('@/app/onboarding/page'))
-const PrivacyPage = lazy(() => import('@/app/legal/PrivacyPage'))
-const TermsPage = lazy(() => import('@/app/legal/TermsPage'))
+// Route-level code splitting for faster mobile cold start (with safe chunk retry recovery)
+const DashboardPage = lazyWithRetry(() => import('@/app/dashboard/page'))
+const LoginPage = lazyWithRetry(() => import('@/app/login/page'))
+const SignUpPage = lazyWithRetry(() => import('@/app/signup/page'))
+const RoutinePage = lazyWithRetry(() => import('@/app/dashboard/routine/page'))
+const GymPage = lazyWithRetry(() => import('@/app/dashboard/gym/page'))
+const GymHistoryPage = lazyWithRetry(() => import('@/app/dashboard/gym/history/page'))
+const GymTrashPage = lazyWithRetry(() => import('@/app/dashboard/gym/trash/page'))
+const PlanBuilderPage = lazyWithRetry(() => import('@/app/dashboard/gym/plan/PlanBuilderPage'))
+const WorkoutSessionPage = lazyWithRetry(() => import('@/app/dashboard/gym/[workoutId]/page'))
+const NutritionPage = lazyWithRetry(() => import('@/app/dashboard/nutrition/page'))
+const RecipesPage = lazyWithRetry(() => import('@/app/dashboard/recipes/page'))
+const SettingsPage = lazyWithRetry(() => import('@/app/dashboard/settings/page'))
+const StatsPage = lazyWithRetry(() => import('@/app/dashboard/stats/page'))
+const WaterTrackerPage = lazyWithRetry(() => import('@/app/dashboard/water/page'))
+const OnboardingPage = lazyWithRetry(() => import('@/app/onboarding/page'))
+const PrivacyPage = lazyWithRetry(() => import('@/app/legal/PrivacyPage'))
+const TermsPage = lazyWithRetry(() => import('@/app/legal/TermsPage'))
 
 function ScrollToTopOnNavigate() {
   const { pathname } = useLocation()
@@ -41,16 +43,30 @@ function SessionRedirect() {
 
   useEffect(() => {
     let active = true
-    void createClient().auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('Impossibile leggere la sessione Supabase:', error)
+    const timeoutId = window.setTimeout(() => {
+      if (active) setDestination('/login')
+    }, 6000)
+
+    void createClient()
+      .auth.getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Impossibile leggere la sessione Supabase:', error)
+          if (active) setDestination('/login')
+          return
+        }
+        if (active) setDestination(data.session ? '/dashboard' : '/login')
+      })
+      .catch(error => {
+        console.error('Errore lettura sessione Supabase:', error)
         if (active) setDestination('/login')
-        return
-      }
-      if (active) setDestination(data.session ? '/dashboard' : '/login')
-    })
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId)
+      })
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
     }
   }, [])
 
@@ -63,20 +79,34 @@ function ProtectedRoute() {
   useEffect(() => {
     const supabase = createClient()
     let active = true
-    void supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('Impossibile verificare la sessione Supabase:', error)
+    const timeoutId = window.setTimeout(() => {
+      if (active) setStatus(current => (current === 'loading' ? 'signed-out' : current))
+    }, 6000)
+
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Impossibile verificare la sessione Supabase:', error)
+          if (active) setStatus('signed-out')
+          return
+        }
+        if (active) setStatus(data.session ? 'signed-in' : 'signed-out')
+      })
+      .catch(error => {
+        console.error('Errore verifica sessione Supabase:', error)
         if (active) setStatus('signed-out')
-        return
-      }
-      if (active) setStatus(data.session ? 'signed-in' : 'signed-out')
-    })
+      })
+      .finally(() => {
+        window.clearTimeout(timeoutId)
+      })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active) setStatus(session ? 'signed-in' : 'signed-out')
     })
 
     return () => {
       active = false
+      window.clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [])
@@ -85,9 +115,11 @@ function ProtectedRoute() {
   if (status === 'signed-out') return <Navigate to="/login" replace />
   return (
     <DashboardLayout>
-      <Suspense fallback={<PageLoading />}>
-        <Outlet />
-      </Suspense>
+      <AppErrorBoundary>
+        <Suspense fallback={<PageLoading />}>
+          <Outlet />
+        </Suspense>
+      </AppErrorBoundary>
     </DashboardLayout>
   )
 }
@@ -148,8 +180,9 @@ export default function App() {
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
         <TransitionProvider>
           <ScrollToTopOnNavigate />
-          <Suspense fallback={<PageLoading />}>
-            <Routes>
+          <AppErrorBoundary>
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
               <Route path="/" element={<SessionRedirect />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
@@ -173,8 +206,9 @@ export default function App() {
                 <Route path="/dashboard/settings" element={<SettingsPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
+              </Routes>
+            </Suspense>
+          </AppErrorBoundary>
           <Toaster position="top-right" richColors />
         </TransitionProvider>
       </ThemeProvider>
