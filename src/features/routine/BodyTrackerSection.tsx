@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { formatLocalDateKey } from '@/app/components/dashboard/home/recentWinsUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { RecentDaysStrip } from '@/components/ui/RecentDaysStrip'
+import { formatShortItalianDate, getLastNDaysKeys } from './habitStore'
 import { computeBmi, readBodyProfile, type BodyProfile } from './profileGoalsStore'
 import { WeightTrendChart } from './WeightTrendChart'
 import {
@@ -22,6 +24,8 @@ export function BodyTrackerSection() {
   const [entries, setEntries] = useState<WeightEntry[]>(() => readWeightLogs())
   const [bodyProfile, setBodyProfile] = useState<BodyProfile>(() => readBodyProfile())
   const todayKey = formatLocalDateKey()
+  const recent7Days = useMemo(() => getLastNDaysKeys(7), [todayKey])
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(() => formatLocalDateKey())
 
   useEffect(() => {
     const sync = () => {
@@ -39,6 +43,16 @@ export function BodyTrackerSection() {
     return stats.latestKg ?? bodyProfile.weightKg ?? DEFAULT_START_WEIGHT_KG
   })
 
+  const selectDate = (dateKey: string) => {
+    setSelectedDateKey(dateKey)
+    const entry = entries.find(e => e.dateKey === dateKey)
+    if (entry) {
+      setDraftWeight(entry.weightKg)
+    } else {
+      setDraftWeight(stats.latestKg ?? bodyProfile.weightKg ?? DEFAULT_START_WEIGHT_KG)
+    }
+  }
+
   const currentWeightForMetrics = stats.latestKg ?? bodyProfile.weightKg
   const bmi = computeBmi(currentWeightForMetrics, bodyProfile.heightCm)
   const targetDiff =
@@ -46,39 +60,53 @@ export function BodyTrackerSection() {
       ? Math.round((currentWeightForMetrics - bodyProfile.targetWeightKg) * 10) / 10
       : null
 
-  const hasTodayEntry = entries.some(e => e.dateKey === todayKey)
+  const selectedEntry = entries.find(e => e.dateKey === selectedDateKey)
+  const hasSelectedEntry = Boolean(selectedEntry)
+  const isSelectedToday = selectedDateKey === todayKey
 
   const adjustDraft = (delta: number) => {
     setDraftWeight(prev => roundWeight(prev + delta))
   }
 
-  const saveTodayWeight = () => {
-    const updated = upsertWeightEntry(draftWeight, todayKey)
+  const saveSelectedWeight = () => {
+    const updated = upsertWeightEntry(draftWeight, selectedDateKey)
     setEntries(updated)
     window.dispatchEvent(new Event('nutriflow:data-updated'))
-    toast.success(`Peso registrato: ${draftWeight.toFixed(1)} kg`)
+    const daySuffix = isSelectedToday ? 'oggi' : formatShortItalianDate(selectedDateKey)
+    toast.success(`Peso registrato (${daySuffix}): ${draftWeight.toFixed(1)} kg`)
   }
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="space-y-3 pb-2">
           <div className="flex items-center justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Scale className="size-4 text-primary" />
-                Peso mattutino
+                {isSelectedToday ? 'Peso mattutino' : `Peso · ${formatShortItalianDate(selectedDateKey)}`}
               </CardTitle>
               <CardDescription className="text-xs">
-                Registra in 1 tap senza tastiera
+                Registra in 1 tap per oggi o gli ultimi 7 giorni
               </CardDescription>
             </div>
-            {hasTodayEntry && (
+            {hasSelectedEntry && (
               <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
-                Oggi salvato
+                {isSelectedToday ? 'Oggi salvato' : `${formatShortItalianDate(selectedDateKey)} salvato`}
               </span>
             )}
           </div>
+          <RecentDaysStrip
+            days={recent7Days}
+            selectedDateKey={selectedDateKey}
+            onSelect={selectDate}
+            renderBadge={dateKey => {
+              const found = entries.find(e => e.dateKey === dateKey)
+              return found ? `${found.weightKg.toFixed(1)}kg` : '—'
+            }}
+            isDayComplete={dateKey => entries.some(e => e.dateKey === dateKey)}
+            accent="primary"
+          />
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -104,9 +132,11 @@ export function BodyTrackerSection() {
             </Button>
           </div>
 
-          <Button className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500" onClick={saveTodayWeight}>
+          <Button className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500" onClick={saveSelectedWeight}>
             <Check className="mr-1.5 size-4" />
-            {hasTodayEntry ? 'Aggiorna peso di oggi' : 'Registra peso di oggi'}
+            {hasSelectedEntry
+              ? `Aggiorna peso (${isSelectedToday ? 'oggi' : formatShortItalianDate(selectedDateKey)})`
+              : `Registra peso (${isSelectedToday ? 'oggi' : formatShortItalianDate(selectedDateKey)})`}
           </Button>
         </CardContent>
       </Card>

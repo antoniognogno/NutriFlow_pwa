@@ -1,4 +1,5 @@
 export const CACHED_WATER_KEY = 'nutriflow:cached-water-v1'
+export const CACHED_WATER_BY_DATE_KEY = 'nutriflow:cached-water-by-date-v1'
 
 export interface CachedWaterLog {
   id?: number
@@ -25,6 +26,29 @@ export function getTodayWaterDateKey(date = new Date()): string {
   return `${y}-${m}-${d}`
 }
 
+export function buildDayBoundsIso(dateKey: string): { startIso: string; endIso: string } {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  if (!y || !m || !d) {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    return { startIso: start.toISOString(), endIso: end.toISOString() }
+  }
+  const start = new Date(y, m - 1, d, 0, 0, 0, 0)
+  const end = new Date(y, m - 1, d + 1, 0, 0, 0, 0)
+  return { startIso: start.toISOString(), endIso: end.toISOString() }
+}
+
+export function buildTimestampForDateKey(dateKey: string, now: Date = new Date()): string {
+  if (dateKey === getTodayWaterDateKey(now)) {
+    return now.toISOString()
+  }
+  const [y, m, d] = dateKey.split('-').map(Number)
+  if (!y || !m || !d) return now.toISOString()
+  return new Date(y, m - 1, d, 12, 0, 0, 0).toISOString()
+}
+
 export function sortWaterLogsNewestFirst(logs: CachedWaterLog[]): CachedWaterLog[] {
   return [...logs].sort((a, b) => {
     const timeCmp = b.created_at.localeCompare(a.created_at)
@@ -33,20 +57,69 @@ export function sortWaterLogsNewestFirst(logs: CachedWaterLog[]): CachedWaterLog
   })
 }
 
+function readByDateMap(): Record<string, CachedWaterLog[]> {
+  try {
+    const raw = localStorage.getItem(CACHED_WATER_BY_DATE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, CachedWaterLog[]>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeByDateEntry(dateKey: string, logs: CachedWaterLog[]): void {
+  try {
+    const map = readByDateMap()
+    map[dateKey] = logs
+    const keys = Object.keys(map).sort().slice(-10)
+    const trimmed: Record<string, CachedWaterLog[]> = {}
+    for (const k of keys) trimmed[k] = map[k]
+    localStorage.setItem(CACHED_WATER_BY_DATE_KEY, JSON.stringify(trimmed))
+  } catch {
+    // Ignore storage quota issues
+  }
+}
+
+export function readCachedWaterByDateMap(): Record<string, CachedWaterLog[]> {
+  const todayKey = getTodayWaterDateKey()
+  const map = readByDateMap()
+  const todayState = readCachedWaterState(todayKey)
+  if (todayState.logs.length > 0 && !map[todayKey]) {
+    map[todayKey] = todayState.logs
+  }
+  return map
+}
+
 export function readCachedWaterState(dateKey = getTodayWaterDateKey()): CachedWaterState {
+  const todayKey = getTodayWaterDateKey()
+  let dailyGoal: number | undefined
+  let todayLogs: CachedWaterLog[] = []
+
   try {
     const raw = localStorage.getItem(CACHED_WATER_KEY)
-    if (!raw) return { dateKey, logs: [] }
-    const parsed = JSON.parse(raw) as Partial<CachedWaterState>
-    const dailyGoal = typeof parsed.dailyGoal === 'number' && parsed.dailyGoal > 0 ? parsed.dailyGoal : undefined
-    if (parsed.dateKey !== dateKey) {
-      return { dateKey, logs: [], dailyGoal }
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CachedWaterState>
+      dailyGoal = typeof parsed.dailyGoal === 'number' && parsed.dailyGoal > 0 ? parsed.dailyGoal : undefined
+      if (parsed.dateKey === dateKey && Array.isArray(parsed.logs)) {
+        todayLogs = sortWaterLogsNewestFirst(parsed.logs)
+        return { dateKey, logs: todayLogs, dailyGoal }
+      }
     }
-    const logs = Array.isArray(parsed.logs) ? sortWaterLogsNewestFirst(parsed.logs) : []
-    return { dateKey, logs, dailyGoal }
   } catch {
-    return { dateKey, logs: [] }
+    // Ignore storage parse failure
   }
+
+  if (dateKey !== todayKey) {
+    const mapLogs = readByDateMap()[dateKey]
+    return {
+      dateKey,
+      logs: Array.isArray(mapLogs) ? sortWaterLogsNewestFirst(mapLogs) : [],
+      dailyGoal,
+    }
+  }
+
+  return { dateKey, logs: todayLogs, dailyGoal }
 }
 
 export function saveCachedWaterState(
@@ -55,15 +128,32 @@ export function saveCachedWaterState(
   dateKey = getTodayWaterDateKey(),
 ): CachedWaterState {
   const existing = readCachedWaterState(dateKey)
+  const sorted = sortWaterLogsNewestFirst(logs)
+  const resolvedGoal = dailyGoal ?? existing.dailyGoal
   const next: CachedWaterState = {
     dateKey,
-    logs: sortWaterLogsNewestFirst(logs),
-    dailyGoal: dailyGoal ?? existing.dailyGoal,
+    logs: sorted,
+    dailyGoal: resolvedGoal,
   }
-  try {
-    localStorage.setItem(CACHED_WATER_KEY, JSON.stringify(next))
-  } catch {
-    // Ignore storage quota issues
+  writeByDateEntry(dateKey, sorted)
+
+  // Only overwrite CACHED_WATER_KEY when updating today's water or goal
+  if (dateKey === getTodayWaterDateKey()) {
+    try {
+      localStorage.setItem(CACHED_WATER_KEY, JSON.stringify(next))
+    } catch {
+      // Ignore storage quota issues
+    }
+  } else if (typeof dailyGoal === 'number' && dailyGoal > 0) {
+    try {
+      const todayState = readCachedWaterState(getTodayWaterDateKey())
+      localStorage.setItem(
+        CACHED_WATER_KEY,
+        JSON.stringify({ ...todayState, dailyGoal }),
+      )
+    } catch {
+      // Ignore storage quota issues
+    }
   }
   return next
 }

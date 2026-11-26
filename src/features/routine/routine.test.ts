@@ -8,6 +8,7 @@ import {
   computeHabitStreak,
   countActiveCompletedForDate,
   DEFAULT_HABITS,
+  getLastNDaysKeys,
   getRelativeDateKey,
   readHabitLogs,
   readHabits,
@@ -171,5 +172,12 @@ describe('Habit Tracker, Body Weight Tracker & Profile Goals', () => {
     expect(logs[yesterdayKey]).toContain('sleep')
     expect(computeHabitStreak(logs, afterMidnight)).toBe(1)
     expect(countActiveCompletedForDate(logs, DEFAULT_HABITS, yesterdayKey)).toBe(2)
+
+    const last7 = getLastNDaysKeys(7, afterMidnight)
+    expect(last7).toHaveLength(7)
+    expect(last7[0].isToday).toBe(true)
+    expect(last7[1].isYesterday).toBe(true)
+    expect(last7[1].dateKey).toBe('2026-11-26')
+    expect(last7[6].dateKey).toBe('2026-11-21')
   })
 })

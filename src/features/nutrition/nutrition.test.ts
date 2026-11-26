@@ -9,7 +9,10 @@ import {
 import { scaleNutrientsForGrams, searchLocalFoods, searchOpenFoodFacts } from './openFoodFacts'
 import {
   appendCachedWaterLog,
+  buildDayBoundsIso,
+  buildTimestampForDateKey,
   clearCachedWaterLogs,
+  getTodayWaterDateKey,
   readCachedWaterState,
   removeLastCachedWaterLog,
   sumWaterLogs,
@@ -107,6 +110,16 @@ describe('Nutrition, Personalized Macros & OpenFoodFacts', () => {
 
     clearCachedWaterLogs()
     expect(sumWaterLogs(readCachedWaterState().logs)).toBe(0)
+
+    // Logging water for yesterday keeps today's water separate and builds exact bounds
+    const todayKey = getTodayWaterDateKey()
+    appendCachedWaterLog({ localId: 'w-today', amount_ml: 500, created_at: new Date().toISOString() }, 3000, todayKey)
+    appendCachedWaterLog({ localId: 'w-yest', amount_ml: 750, created_at: '2026-11-26T12:00:00.000Z' }, 3000, '2026-11-26')
+    expect(sumWaterLogs(readCachedWaterState(todayKey).logs)).toBe(500)
+    expect(sumWaterLogs(readCachedWaterState('2026-11-26').logs)).toBe(750)
+    const bounds = buildDayBoundsIso('2026-11-26')
+    const ts = buildTimestampForDateKey('2026-11-26')
+    expect(ts >= bounds.startIso && ts < bounds.endIso).toBe(true)
 
     saveCachedMeals([
       {

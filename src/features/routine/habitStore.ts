@@ -174,6 +174,41 @@ export function formatShortItalianDate(dateKey: string): string {
   })
 }
 
+export interface RecentDayOption {
+  dateKey: string
+  shortLabel: string
+  dayNum: string
+  weekdayShort: string
+  isToday: boolean
+  isYesterday: boolean
+}
+
+export function getLastNDaysKeys(
+  days: number = 7,
+  baseDate: Date = new Date(),
+): RecentDayOption[] {
+  const result: RecentDayOption[] = []
+  for (let offset = 0; offset < days; offset += 1) {
+    const cursor = new Date(baseDate)
+    cursor.setHours(0, 0, 0, 0)
+    cursor.setDate(cursor.getDate() - offset)
+    const dateKey = formatLocalDateKey(cursor)
+    const weekdayShort = cursor
+      .toLocaleDateString('it-IT', { weekday: 'short' })
+      .replace('.', '')
+    const dayNum = String(cursor.getDate())
+    result.push({
+      dateKey,
+      shortLabel: offset === 0 ? 'Oggi' : offset === 1 ? 'Ieri' : `${weekdayShort} ${dayNum}`,
+      dayNum,
+      weekdayShort,
+      isToday: offset === 0,
+      isYesterday: offset === 1,
+    })
+  }
+  return result
+}
+
 export function countActiveCompletedForDate(
   logs: HabitLogsByDate,
   habits: HabitItem[],

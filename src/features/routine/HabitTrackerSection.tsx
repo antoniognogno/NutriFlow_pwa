@@ -29,6 +29,7 @@ import { validateSafeUserText } from '@/lib/authSecurity'
 import { focusAndScrollToElement } from '@/lib/focusScroll'
 import { createClient } from '@/lib/supabase/client'
 import { HabitConsistencyChart } from './HabitConsistencyChart'
+import { RecentDaysStrip } from '@/components/ui/RecentDaysStrip'
 import {
   addCustomHabit,
   buildHistoricalPeriods,
@@ -37,6 +38,7 @@ import {
   computeHabitStreak,
   countActiveCompletedForDate,
   formatShortItalianDate,
+  getLastNDaysKeys,
   getRelativeDateKey,
   type HabitItem,
   type HabitLogsByDate,
@@ -87,14 +89,13 @@ export function HabitTrackerSection() {
 
   const todayKey = formatLocalDateKey()
   const yesterdayKey = getRelativeDateKey(-1)
+  const recent7Days = useMemo(() => getLastNDaysKeys(7), [todayKey])
   const [selectedDateKey, setSelectedDateKey] = useState<string>(() => formatLocalDateKey())
   const activeDateKey = clampPastOrTodayDateKey(selectedDateKey, todayKey)
   const isEditingToday = activeDateKey === todayKey
   const isEditingYesterday = activeDateKey === yesterdayKey
   const activeCompleted = logs[activeDateKey] ?? []
   const activeDoneCount = countActiveCompletedForDate(logs, habits, activeDateKey)
-  const todayDoneCount = countActiveCompletedForDate(logs, habits, todayKey)
-  const yesterdayDoneCount = countActiveCompletedForDate(logs, habits, yesterdayKey)
 
   useEffect(() => {
     const refresh = () => {
@@ -302,48 +303,20 @@ export function HabitTrackerSection() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/60 bg-muted/35 p-1">
-            <button
-              type="button"
-              onClick={() => setSelectedDateKey(todayKey)}
-              className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-colors ${
-                isEditingToday
-                  ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span>Oggi</span>
-              <span className="font-mono text-[10px] opacity-80">
-                ({todayDoneCount}/{habits.length})
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedDateKey(yesterdayKey)}
-              className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-colors ${
-                isEditingYesterday
-                  ? 'bg-amber-500 text-amber-950 shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span>Ieri · {formatShortItalianDate(yesterdayKey)}</span>
-              <span className="font-mono text-[10px] opacity-85">
-                ({yesterdayDoneCount}/{habits.length})
-              </span>
-            </button>
-            <input
-              type="date"
-              aria-label="Scegli data abitudini"
-              max={todayKey}
-              value={activeDateKey}
-              onChange={e => {
-                if (e.target.value) {
-                  setSelectedDateKey(clampPastOrTodayDateKey(e.target.value, todayKey))
-                }
-              }}
-              className="h-8 w-[8.2rem] shrink-0 rounded-lg border border-input bg-background px-2 font-mono text-[11px] text-foreground"
-            />
-          </div>
+          <RecentDaysStrip
+            days={recent7Days}
+            selectedDateKey={activeDateKey}
+            onSelect={dateKey => setSelectedDateKey(clampPastOrTodayDateKey(dateKey, todayKey))}
+            renderBadge={dateKey =>
+              `${countActiveCompletedForDate(logs, habits, dateKey)}/${habits.length}`
+            }
+            isDayComplete={dateKey =>
+              habits.length > 0 && countActiveCompletedForDate(logs, habits, dateKey) >= habits.length
+            }
+            showDatePicker
+            maxDateKey={todayKey}
+            accent="emerald"
+          />
 
           {!isEditingToday && (
             <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">

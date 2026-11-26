@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { RecentDaysStrip } from "@/components/ui/RecentDaysStrip";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
@@ -33,9 +34,12 @@ import {
 } from "@/features/offline/useOfflineSync";
 import {
   appendCachedWaterLog,
+  buildDayBoundsIso,
   buildHourlyWaterChartData,
+  buildTimestampForDateKey,
   clearCachedWaterLogs,
   getTodayWaterDateKey,
+  readCachedWaterByDateMap,
   readCachedWaterState,
   removeLastCachedWaterLog,
   saveCachedWaterState,
@@ -43,6 +47,10 @@ import {
   updateLastCachedWaterLog,
   type CachedWaterLog,
 } from "@/features/nutrition/waterOfflineCache";
+import {
+  formatShortItalianDate,
+  getLastNDaysKeys,
+} from "@/features/routine/habitStore";
 import {
   readWaterPresets,
   saveWaterPresets,
@@ -81,15 +89,24 @@ export default function WaterTrackerPage() {
   const supabase = createClient();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [totalToday, setTotalToday] = useState(() => sumWaterLogs(readCachedWaterState().logs));
+  const todayKey = getTodayWaterDateKey();
+  const recent7Days = useMemo(() => getLastNDaysKeys(7), [todayKey]);
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(() => getTodayWaterDateKey());
+  const isSelectedToday = selectedDateKey === todayKey;
+
+  const [totalForDay, setTotalForDay] = useState(() => sumWaterLogs(readCachedWaterState(todayKey).logs));
   const [dailyGoal, setDailyGoal] = useState(
-    () => readCachedWaterState().dailyGoal ?? readCachedProfileSettings().water_goal_ml,
+    () => readCachedWaterState(todayKey).dailyGoal ?? readCachedProfileSettings().water_goal_ml,
   );
-  const [chartData, setChartData] = useState<ChartData[]>(() =>
-    buildHourlyWaterChartData(readCachedWaterState().logs),
+  const [waterByDate, setWaterByDate] = useState<Record<string, CachedWaterLog[]>>(
+    () => readCachedWaterByDateMap(),
+  );
+  const [reportTick, setReportTick] = useState(0);
+  const [, setChartData] = useState<ChartData[]>(() =>
+    buildHourlyWaterChartData(readCachedWaterState(todayKey).logs),
   );
   const [lastLog, setLastLog] = useState<TodayWaterLog | null>(
-    () => readCachedWaterState().logs[0] ?? null,
+    () => readCachedWaterState(todayKey).logs[0] ?? null,
   );
   const [presets, setPresets] = useState<WaterPresetItem[]>(() => readWaterPresets());
 
@@ -101,33 +118,39 @@ export default function WaterTrackerPage() {
 
   const firstPresetInputRef = useRef<HTMLInputElement>(null);
   const editLastInputRef = useRef<HTMLInputElement>(null);
+  const selectedDateRef = useRef(selectedDateKey);
+  selectedDateRef.current = selectedDateKey;
 
   const applyCachedWaterToState = useCallback((logs: TodayWaterLog[], nextGoal?: number) => {
-    setTotalToday(sumWaterLogs(logs));
+    setTotalForDay(sumWaterLogs(logs));
     setLastLog(logs[0] ?? null);
     setChartData(buildHourlyWaterChartData(logs));
+    setWaterByDate(readCachedWaterByDateMap());
     if (typeof nextGoal === 'number' && nextGoal > 0) {
       setDailyGoal(nextGoal);
     }
   }, []);
 
-  const fetchData = useCallback(async (currentUserId: string) => {
-    const cached = readCachedWaterState();
-    applyCachedWaterToState(
-      cached.logs,
-      cached.dailyGoal ?? readCachedProfileSettings().water_goal_ml,
-    );
+  const fetchData = useCallback(async (currentUserId: string, targetDateKey: string = selectedDateRef.current) => {
+    const cached = readCachedWaterState(targetDateKey);
+    if (selectedDateRef.current === targetDateKey) {
+      applyCachedWaterToState(
+        cached.logs,
+        cached.dailyGoal ?? readCachedProfileSettings().water_goal_ml,
+      );
+    }
 
     if (!navigator.onLine) return;
 
-    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+    const { startIso, endIso } = buildDayBoundsIso(targetDateKey);
     const [profileResponse, logsResponse, pendingOutbox] = await Promise.all([
       supabase.from('profiles').select('water_goal_ml').eq('id', currentUserId).single(),
       supabase
         .from('water_logs')
         .select('id, amount_ml, created_at')
         .eq('user_id', currentUserId)
-        .gte('created_at', startOfDay.toISOString())
+        .gte('created_at', startIso)
+        .lt('created_at', endIso)
         .order('created_at', { ascending: false })
         .order('id', { ascending: false }),
       offlineDatabase.outbox.where('userId').equals(currentUserId).toArray(),
@@ -154,8 +177,12 @@ export default function WaterTrackerPage() {
     const { data: logs } = logsResponse;
     if (!hasPendingWaterMutations && logs) {
       const normalized = logs as TodayWaterLog[];
-      saveCachedWaterState(normalized, resolvedGoal);
-      applyCachedWaterToState(normalized);
+      saveCachedWaterState(normalized, resolvedGoal, targetDateKey);
+      if (selectedDateRef.current === targetDateKey) {
+        applyCachedWaterToState(normalized);
+      } else {
+        setWaterByDate(readCachedWaterByDateMap());
+      }
     }
   }, [supabase, applyCachedWaterToState]);
 
@@ -169,14 +196,15 @@ export default function WaterTrackerPage() {
           return;
         }
         setUserId(user.id);
-        await fetchData(user.id);
+        await fetchData(user.id, selectedDateRef.current);
       } catch (error) {
         console.error('Errore caricamento acqua:', error);
       }
     };
     void initializePage();
     const handleSyncRefresh = () => {
-      const cached = readCachedWaterState();
+      const targetKey = selectedDateRef.current;
+      const cached = readCachedWaterState(targetKey);
       applyCachedWaterToState(
         cached.logs,
         cached.dailyGoal ?? readCachedProfileSettings().water_goal_ml,
@@ -186,9 +214,21 @@ export default function WaterTrackerPage() {
     return () => window.removeEventListener('nutriflow:data-updated', handleSyncRefresh);
   }, [router, supabase, fetchData, applyCachedWaterToState]);
 
+  const handleSelectDate = (dateKey: string) => {
+    setSelectedDateKey(dateKey);
+    selectedDateRef.current = dateKey;
+    setIsEditingLast(false);
+    const cached = readCachedWaterState(dateKey);
+    applyCachedWaterToState(cached.logs, cached.dailyGoal);
+    if (userId) {
+      void fetchData(userId, dateKey);
+    }
+  };
+
   const handleAddWater = async (amount: number) => {
     if (!userId || amount <= 0) return;
-    const nowIso = new Date().toISOString();
+    const targetDateKey = selectedDateKey;
+    const entryIso = buildTimestampForDateKey(targetDateKey);
     const outboxId = `water_logs:${crypto.randomUUID()}`;
 
     const queueOfflineAdd = async (message: string) => {
@@ -199,11 +239,14 @@ export default function WaterTrackerPage() {
         payload: {
           user_id: userId,
           amount_ml: amount,
-          created_at: nowIso,
+          created_at: entryIso,
         },
       });
-      const updated = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: nowIso });
-      applyCachedWaterToState(updated.logs);
+      const updated = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: entryIso }, undefined, targetDateKey);
+      if (selectedDateRef.current === targetDateKey) {
+        applyCachedWaterToState(updated.logs);
+      }
+      setReportTick(t => t + 1);
       toast.success(message);
       window.dispatchEvent(new Event('nutriflow:data-updated'));
     };
@@ -217,13 +260,17 @@ export default function WaterTrackerPage() {
       return;
     }
 
-    const optimistic = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: nowIso });
+    const optimistic = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: entryIso }, undefined, targetDateKey);
     applyCachedWaterToState(optimistic.logs);
 
     try {
+      const insertPayload =
+        targetDateKey === getTodayWaterDateKey()
+          ? { user_id: userId, amount_ml: amount }
+          : { user_id: userId, amount_ml: amount, created_at: entryIso };
       const { data, error } = await supabase
         .from('water_logs')
-        .insert([{ user_id: userId, amount_ml: amount }])
+        .insert([insertPayload])
         .select('id, amount_ml, created_at')
         .single();
 
@@ -237,11 +284,20 @@ export default function WaterTrackerPage() {
 
       const reconciled = saveCachedWaterState(
         optimistic.logs.map(item => (item.localId === outboxId ? (data as TodayWaterLog) : item)),
+        undefined,
+        targetDateKey,
       );
-      applyCachedWaterToState(reconciled.logs);
-      toast.success(`+${amount} ml aggiunti`);
+      if (selectedDateRef.current === targetDateKey) {
+        applyCachedWaterToState(reconciled.logs);
+      }
+      setReportTick(t => t + 1);
+      toast.success(
+        targetDateKey === todayKey
+          ? `+${amount} ml aggiunti`
+          : `+${amount} ml aggiunti (${formatShortItalianDate(targetDateKey)})`,
+      );
       window.dispatchEvent(new Event('nutriflow:data-updated'));
-      void fetchData(userId);
+      void fetchData(userId, targetDateKey);
     } catch {
       try {
         await queueOfflineAdd(`+${amount} ml salvati offline (in coda sync)`);
@@ -253,9 +309,11 @@ export default function WaterTrackerPage() {
 
   const handleRemoveLast = async () => {
     if (!userId || !lastLog) return;
-    const { removed, state } = removeLastCachedWaterLog();
+    const targetDateKey = selectedDateKey;
+    const { removed, state } = removeLastCachedWaterLog(targetDateKey);
     if (!removed) return;
     applyCachedWaterToState(state.logs);
+    setReportTick(t => t + 1);
 
     const queueDelete = async () => {
       if (removed.localId) {
@@ -295,7 +353,7 @@ export default function WaterTrackerPage() {
 
     toast.info(`Rimossi -${removed.amount_ml} ml`);
     window.dispatchEvent(new Event('nutriflow:data-updated'));
-    void fetchData(userId);
+    void fetchData(userId, targetDateKey);
   };
 
   const openEditLast = () => {
@@ -308,10 +366,12 @@ export default function WaterTrackerPage() {
   const handleSaveLastEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId || !lastLog || (!lastLog.id && !lastLog.localId)) return;
+    const targetDateKey = selectedDateKey;
     const nextMl = Math.max(10, Math.min(3000, Number.parseInt(lastMlDraft, 10) || lastLog.amount_ml));
-    const { updated, previous, state } = updateLastCachedWaterLog(nextMl);
+    const { updated, previous, state } = updateLastCachedWaterLog(nextMl, targetDateKey);
     if (!updated || !previous) return;
     applyCachedWaterToState(state.logs);
+    setReportTick(t => t + 1);
     setIsEditingLast(false);
 
     if (updated.localId) {
@@ -369,16 +429,28 @@ export default function WaterTrackerPage() {
         window.dispatchEvent(new Event('nutriflow:data-updated'));
         return;
       }
-      const nextState = saveCachedWaterState([insertedRow as TodayWaterLog, ...state.logs.slice(1)]);
-      applyCachedWaterToState(nextState.logs);
+      const nextState = saveCachedWaterState(
+        [insertedRow as TodayWaterLog, ...state.logs.slice(1)],
+        undefined,
+        targetDateKey,
+      );
+      if (selectedDateRef.current === targetDateKey) {
+        applyCachedWaterToState(nextState.logs);
+      }
     } else {
-      const nextState = saveCachedWaterState([updatedRows[0] as TodayWaterLog, ...state.logs.slice(1)]);
-      applyCachedWaterToState(nextState.logs);
+      const nextState = saveCachedWaterState(
+        [updatedRows[0] as TodayWaterLog, ...state.logs.slice(1)],
+        undefined,
+        targetDateKey,
+      );
+      if (selectedDateRef.current === targetDateKey) {
+        applyCachedWaterToState(nextState.logs);
+      }
     }
 
     toast.success(`Ultima registrazione aggiornata a ${nextMl} ml`);
     window.dispatchEvent(new Event('nutriflow:data-updated'));
-    void fetchData(userId);
+    void fetchData(userId, targetDateKey);
   };
 
   const openEditPresets = () => {
@@ -451,20 +523,18 @@ export default function WaterTrackerPage() {
 
   const handleResetWater = async () => {
     if (!userId) return;
-    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(endOfDay.getDate() + 1);
-    const startIso = startOfDay.toISOString();
-    const endIso = endOfDay.toISOString();
+    const targetDateKey = selectedDateKey;
+    const { startIso, endIso } = buildDayBoundsIso(targetDateKey);
 
-    const cleared = clearCachedWaterLogs();
+    const cleared = clearCachedWaterLogs(targetDateKey);
     applyCachedWaterToState(cleared.logs);
+    setReportTick(t => t + 1);
     setIsEditingLast(false);
     await clearPendingTodayWaterOutbox(userId, startIso, endIso);
 
     const queueReset = async () => {
       await queueAndSync({
-        id: `water_logs_reset_day:${getTodayWaterDateKey()}`,
+        id: `water_logs_reset_day:${targetDateKey}`,
         userId,
         table: 'water_logs_reset_day',
         payload: { start_iso: startIso, end_iso: endIso },
@@ -494,11 +564,11 @@ export default function WaterTrackerPage() {
 
     toast.success("Log resettati con successo.");
     window.dispatchEvent(new Event('nutriflow:data-updated'));
-    await fetchData(userId);
+    await fetchData(userId, targetDateKey);
   };
 
-  const progressValue = dailyGoal > 0 ? Math.min(100, (totalToday / dailyGoal) * 100) : 0;
-  const remainingMl = Math.max(0, dailyGoal - totalToday);
+  const progressValue = dailyGoal > 0 ? Math.min(100, (totalForDay / dailyGoal) * 100) : 0;
+  const remainingMl = Math.max(0, dailyGoal - totalForDay);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4">
@@ -532,19 +602,51 @@ export default function WaterTrackerPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-3 text-center">
-          <CardTitle className="text-base sm:text-lg">Progresso giornaliero</CardTitle>
-          <CardDescription>
-            {remainingMl === 0
-              ? 'Obiettivo giornaliero raggiunto!'
-              : `Mancano ${remainingMl.toLocaleString('it-IT')} ml · ${Math.round(progressValue)}%`}
-          </CardDescription>
+        <CardHeader className="space-y-3 pb-3 text-center">
+          <div>
+            <CardTitle className="text-base sm:text-lg">
+              {isSelectedToday
+                ? 'Progresso giornaliero'
+                : `Acqua · ${formatShortItalianDate(selectedDateKey)}`}
+            </CardTitle>
+            <CardDescription>
+              {remainingMl === 0
+                ? 'Obiettivo giornaliero raggiunto!'
+                : `Mancano ${remainingMl.toLocaleString('it-IT')} ml · ${Math.round(progressValue)}%`}
+            </CardDescription>
+          </div>
+          <RecentDaysStrip
+            days={recent7Days}
+            selectedDateKey={selectedDateKey}
+            onSelect={handleSelectDate}
+            renderBadge={dateKey => {
+              const dayTotal = sumWaterLogs(waterByDate[dateKey] ?? []);
+              if (dayTotal > 0) return `${(dayTotal / 1000).toFixed(1)}L`;
+              return formatShortItalianDate(dateKey);
+            }}
+            isDayComplete={dateKey => sumWaterLogs(waterByDate[dateKey] ?? []) >= dailyGoal}
+            accent="sky"
+          />
+          {!isSelectedToday && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-1.5 text-left text-[11px] text-sky-300">
+              <span>
+                Modifica idratazione di <strong>{formatShortItalianDate(selectedDateKey)}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSelectDate(todayKey)}
+                className="shrink-0 font-semibold underline underline-offset-2 hover:text-sky-200"
+              >
+                Torna a oggi
+              </button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-4">
           <div className="space-y-2">
             <p className="text-center font-mono text-3xl font-bold text-primary sm:text-4xl">
-              {totalToday.toLocaleString('it-IT')}
+              {totalForDay.toLocaleString('it-IT')}
               <span className="text-base font-medium text-muted-foreground sm:text-xl">
                 {' '}/ {dailyGoal.toLocaleString('it-IT')} ml
               </span>
@@ -674,7 +776,7 @@ export default function WaterTrackerPage() {
           </div>
         </CardContent>
 
-        {(lastLog || totalToday > 0) && (
+        {(lastLog || totalForDay > 0) && (
           <>
             <div className="px-6">
               <Separator />
@@ -729,7 +831,7 @@ export default function WaterTrackerPage() {
                   </>
                 )}
 
-                {totalToday > 0 && (
+                {totalForDay > 0 && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -745,7 +847,9 @@ export default function WaterTrackerPage() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Questa azione cancellerà tutti i log odierni.
+                          {isSelectedToday
+                            ? 'Questa azione cancellerà tutti i log odierni.'
+                            : `Questa azione cancellerà tutti i log del ${formatShortItalianDate(selectedDateKey)}.`}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -766,7 +870,7 @@ export default function WaterTrackerPage() {
       <WaterHistoryReportCard
         userId={userId}
         dailyGoal={dailyGoal}
-        refreshSignal={totalToday}
+        refreshSignal={reportTick}
       />
     </div>
   );
