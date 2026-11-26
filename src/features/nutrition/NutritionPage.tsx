@@ -24,7 +24,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { queueAndSync } from '@/features/offline/useOfflineSync'
+import { offlineDatabase } from '@/features/offline/database'
+import { queueAndSync, removeOutboxItem } from '@/features/offline/useOfflineSync'
+import {
+  mergeRemoteAndCachedMeals,
+  readCachedMeals,
+  removeCachedMeal,
+  saveCachedMeals,
+  upsertCachedMeal,
+} from './mealOfflineCache'
 import { readBodyProfile } from '@/features/routine/profileGoalsStore'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -43,8 +51,8 @@ import {
 export function NutritionView() {
   const supabase = createClient()
   const [userId, setUserId] = useState<string | null>(null)
-  const [meals, setMeals] = useState<MealLog[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [meals, setMeals] = useState<MealLog[]>(() => readCachedMeals())
+  const [isLoading, setIsLoading] = useState(() => readCachedMeals().length === 0)
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [mealName, setMealName] = useState('')
   const [calories, setCalories] = useState('')
@@ -79,27 +87,65 @@ export function NutritionView() {
   const mealNameInputRef = useRef<HTMLInputElement>(null)
 
   const loadMeals = useCallback(async () => {
+    const cached = readCachedMeals()
+    if (cached.length > 0) {
+      setMeals(cached)
+      setIsLoading(false)
+    }
+
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     if (authError) throw authError
     const user = session?.user
     if (!user) return
     setUserId(user.id)
 
+    if (!navigator.onLine) {
+      setMeals(readCachedMeals())
+      setIsLoading(false)
+      return
+    }
+
     const start = new Date()
     start.setHours(0, 0, 0, 0)
     const end = new Date(start)
     end.setDate(end.getDate() + 1)
 
-    const { data, error } = await supabase
-      .from('meal_logs')
-      .select('id, user_id, meal_name, description, calories, protein_g, carbs_g, fats_g, logged_at')
-      .eq('user_id', user.id)
-      .gte('logged_at', start.toISOString())
-      .lt('logged_at', end.toISOString())
-      .order('logged_at', { ascending: false })
+    const [remoteRes, pendingOutbox] = await Promise.all([
+      supabase
+        .from('meal_logs')
+        .select('id, user_id, meal_name, description, calories, protein_g, carbs_g, fats_g, logged_at')
+        .eq('user_id', user.id)
+        .gte('logged_at', start.toISOString())
+        .lt('logged_at', end.toISOString())
+        .order('logged_at', { ascending: false }),
+      offlineDatabase.outbox.where('userId').equals(user.id).toArray(),
+    ])
 
-    if (error) throw error
-    setMeals((data ?? []) as MealLog[])
+    if (remoteRes.error) {
+      setMeals(readCachedMeals())
+      setIsLoading(false)
+      return
+    }
+
+    const pendingUpsertIds = new Set(
+      pendingOutbox
+        .filter(item => item.table === 'meal_logs')
+        .map(item => item.payload.id),
+    )
+    const pendingDeleteIds = new Set(
+      pendingOutbox
+        .filter(item => item.table === 'meal_logs_delete')
+        .map(item => item.payload.id),
+    )
+
+    const merged = mergeRemoteAndCachedMeals(
+      (remoteRes.data ?? []) as MealLog[],
+      readCachedMeals(),
+      pendingUpsertIds,
+      pendingDeleteIds,
+    )
+    saveCachedMeals(merged)
+    setMeals(merged)
     setIsLoading(false)
   }, [supabase])
 
@@ -130,6 +176,8 @@ export function NutritionView() {
     }
 
     try {
+      const updatedMeals = upsertCachedMeal(record)
+      setMeals(updatedMeals)
       await queueAndSync({
         id: `meal_logs:${record.id}`,
         userId,
@@ -137,7 +185,6 @@ export function NutritionView() {
         conflictTarget: 'id',
         payload: record,
       })
-      setMeals(current => [record, ...current])
       toast.success(`${record.meal_name} registrato (${record.calories} kcal).`)
     } catch (error) {
       console.error('Errore salvataggio pasto:', error)
@@ -198,6 +245,10 @@ export function NutritionView() {
 
   const handleCopyYesterdayMeals = async () => {
     if (!userId || isSaving) return
+    if (!navigator.onLine) {
+      toast.error('Copia pasti di ieri non disponibile offline.')
+      return
+    }
     setIsSaving(true)
     try {
       const todayStart = new Date()
@@ -241,7 +292,11 @@ export function NutritionView() {
         cloned.push(record)
       }
 
-      setMeals(prev => [...cloned, ...prev])
+      setMeals(prev => {
+        const next = [...cloned, ...prev]
+        saveCachedMeals(next)
+        return next
+      })
       toast.success(`Copiati ${cloned.length} pasti da ieri!`)
     } catch (error) {
       console.error('Errore copia pasti di ieri:', error)
@@ -273,7 +328,7 @@ export function NutritionView() {
       fats_g: Math.max(0, Number.parseFloat(editDraft.fats_g || '0') || 0),
     }
 
-    setMeals(curr => curr.map(m => (m.id === meal.id ? updated : m)))
+    setMeals(upsertCachedMeal(updated))
     setEditingMealId(null)
     try {
       await queueAndSync({
@@ -291,11 +346,32 @@ export function NutritionView() {
 
   const deleteMeal = async (meal: MealLog) => {
     if (!userId) return
-    setMeals(curr => curr.filter(m => m.id !== meal.id))
-    const { error } = await supabase.from('meal_logs').delete().eq('id', meal.id)
+    setMeals(removeCachedMeal(meal.id))
+    await removeOutboxItem(`meal_logs:${meal.id}`)
+
+    const queueMealDelete = async () => {
+      await queueAndSync({
+        id: `meal_logs_delete:${meal.id}`,
+        userId,
+        table: 'meal_logs_delete',
+        payload: { id: meal.id },
+      })
+    }
+
+    if (!navigator.onLine) {
+      await queueMealDelete()
+      toast.success(`"${meal.meal_name}" eliminato offline.`)
+      return
+    }
+
+    const { error } = await supabase
+      .from('meal_logs')
+      .delete()
+      .eq('id', meal.id)
+      .eq('user_id', userId)
     if (error) {
-      toast.error('Eliminazione non riuscita.')
-      void loadMeals()
+      await queueMealDelete()
+      toast.success(`"${meal.meal_name}" eliminato in locale (in coda sync).`)
       return
     }
     toast.success(`"${meal.meal_name}" eliminato.`)

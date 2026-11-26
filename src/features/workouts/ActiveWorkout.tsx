@@ -11,6 +11,12 @@ import { ExerciseNameField } from '@/features/workouts/ExerciseNameField'
 import { findSameMuscleAlternatives, loadFreeExerciseDb, type FreeExerciseRecord } from '@/features/workouts/exerciseGuide'
 import { readExerciseMeta } from '@/features/workouts/exerciseNotesStore'
 import {
+  cachePerformance,
+  findCachedWorkout,
+  readCachedPerformance,
+  upsertCachedSession,
+} from '@/features/workouts/workoutOfflineCache'
+import {
   getStandbyWorkout,
   removeStandbyWorkout,
   saveStandbyWorkout,
@@ -119,14 +125,19 @@ function buildInitialSets(exercises: Exercise[], perfData: LatestPerformance[] =
 export function ActiveWorkout({ workoutId }: { workoutId: string }) {
   const router = useRouter()
   const supabase = createClient()
-  const initialDefaultWorkout = useMemo(() => findDefaultWorkout(workoutId) as Workout | undefined, [workoutId])
+  const initialDefaultWorkout = useMemo(
+    () => (findDefaultWorkout(workoutId) ?? findCachedWorkout(workoutId)) as Workout | undefined,
+    [workoutId],
+  )
   const [workout, setWorkout] = useState<Workout | null>(() => initialDefaultWorkout ?? null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [lastPerformance, setLastPerformance] = useState<LatestPerformance[]>([])
+  const [lastPerformance, setLastPerformance] = useState<LatestPerformance[]>(() => readCachedPerformance())
   const [setsByExercise, setSetsByExercise] = useState<SavedWorkoutDraft>(() => {
     const saved = readSavedSets(workoutId)
     if (Object.keys(saved).length > 0) return saved
-    return initialDefaultWorkout ? buildInitialSets(initialDefaultWorkout.workout_exercises) : {}
+    return initialDefaultWorkout
+      ? buildInitialSets(initialDefaultWorkout.workout_exercises, readCachedPerformance())
+      : {}
   })
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [pausedAtMs, setPausedAtMs] = useState<number | null>(null)
@@ -242,8 +253,8 @@ export function ActiveWorkout({ workoutId }: { workoutId: string }) {
   useEffect(() => {
     let active = true
     const loadWorkout = async () => {
-      const defaultTemplate = findDefaultWorkout(workoutId)
-      if (!defaultTemplate) {
+      const localTemplate = findDefaultWorkout(workoutId) ?? findCachedWorkout(workoutId)
+      if (!localTemplate) {
         setIsLoading(true)
       }
       setLoadError(null)
@@ -256,9 +267,23 @@ export function ActiveWorkout({ workoutId }: { workoutId: string }) {
       }
       if (active) setUserId(user.id)
 
+      if (!navigator.onLine && localTemplate) {
+        const cachedPerf = readCachedPerformance()
+        if (active) {
+          const wData = {
+            ...localTemplate,
+            workout_exercises: [...localTemplate.workout_exercises].sort((a, b) => a.order - b.order),
+          } as Workout
+          setWorkout(wData)
+          setLastPerformance(cachedPerf)
+          setIsLoading(false)
+        }
+        return
+      }
+
       const [workoutResult, performanceResult] = await Promise.all([
-        defaultTemplate
-          ? Promise.resolve({ data: defaultTemplate, error: null })
+        localTemplate
+          ? Promise.resolve({ data: localTemplate, error: null })
           : supabase
               .from('workouts')
               .select('*, workout_exercises(*)')
@@ -277,13 +302,19 @@ export function ActiveWorkout({ workoutId }: { workoutId: string }) {
       if (!active) return
 
       const workoutData = workoutResult.data as Workout
-      const perfData = (performanceResult.data ?? []) as LatestPerformance[]
+      const perfData =
+        !performanceResult.error && performanceResult.data
+          ? (performanceResult.data as LatestPerformance[])
+          : readCachedPerformance()
+      if (!performanceResult.error && performanceResult.data) {
+        cachePerformance(perfData)
+      }
       workoutData.workout_exercises.sort((a, b) => a.order - b.order)
       setWorkout(workoutData)
       setLastPerformance(perfData)
 
       setSetsByExercise(current => {
-        if (Object.keys(current).length > 0 && !defaultTemplate) return current
+        if (Object.keys(current).length > 0 && !localTemplate) return current
         if (Object.keys(current).length > 0 && perfData.length === 0) return current
         if (Object.keys(current).length > 0) {
           // Autocompila solo le serie non ancora toccate dall'utente
@@ -608,6 +639,7 @@ export function ActiveWorkout({ workoutId }: { workoutId: string }) {
         }
       }
 
+      upsertCachedSession(savedSessionPayload, savedSetRows)
       localStorage.removeItem(`lifeflow:active-workout:${workoutId}`)
       localStorage.removeItem(`lifeflow:workout-sets:${workoutId}`)
       removeStandbyWorkout(workoutId)

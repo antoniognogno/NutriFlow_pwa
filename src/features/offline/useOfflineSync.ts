@@ -21,8 +21,134 @@ async function syncItem(supabase: ReturnType<typeof createClient>, item: OutboxI
       return supabase.from('life_events').upsert(item.payload, { onConflict: item.conflictTarget })
     case 'meal_logs':
       return supabase.from('meal_logs').upsert(item.payload, { onConflict: item.conflictTarget })
+    case 'meal_logs_delete':
+      return supabase
+        .from('meal_logs')
+        .delete()
+        .eq('id', item.payload.id)
+        .eq('user_id', item.userId)
     case 'water_logs':
       return supabase.from('water_logs').insert(item.payload)
+    case 'water_logs_delete':
+      return supabase
+        .from('water_logs')
+        .delete()
+        .eq('id', item.payload.id)
+        .eq('user_id', item.userId)
+    case 'water_logs_update': {
+      const { data: updatedRows, error: updateError } = await supabase
+        .from('water_logs')
+        .update({ amount_ml: item.payload.amount_ml })
+        .eq('id', item.payload.id)
+        .eq('user_id', item.userId)
+        .select('id')
+      if (!updateError && updatedRows && updatedRows.length > 0) {
+        return { error: null }
+      }
+      const { error: deleteErr } = await supabase
+        .from('water_logs')
+        .delete()
+        .eq('id', item.payload.id)
+        .eq('user_id', item.userId)
+      if (deleteErr) return { error: deleteErr }
+      return supabase.from('water_logs').insert([
+        {
+          user_id: item.userId,
+          amount_ml: item.payload.amount_ml,
+          created_at: item.payload.created_at,
+        },
+      ])
+    }
+    case 'water_logs_reset_day':
+      return supabase
+        .from('water_logs')
+        .delete()
+        .eq('user_id', item.userId)
+        .gte('created_at', item.payload.start_iso)
+        .lt('created_at', item.payload.end_iso)
+    case 'profiles':
+      return supabase.from('profiles').upsert(item.payload, { onConflict: item.conflictTarget })
+    case 'profiles_water_goal':
+      return supabase
+        .from('profiles')
+        .update({
+          water_goal_ml: item.payload.water_goal_ml,
+          updated_at: item.payload.updated_at,
+        })
+        .eq('id', item.userId)
+    case 'workout_plans_sync': {
+      const { plan } = item.payload
+      const { error: planErr } = await supabase
+        .from('workout_plans')
+        .upsert(
+          {
+            id: plan.id,
+            user_id: item.userId,
+            name: plan.name,
+            created_at: plan.created_at,
+          },
+          { onConflict: 'id' },
+        )
+      if (planErr) return { error: planErr }
+
+      const { data: existingWorkouts, error: existingErr } = await supabase
+        .from('workouts')
+        .select('id')
+        .eq('plan_id', plan.id)
+      if (existingErr) return { error: existingErr }
+
+      const existingIds = (existingWorkouts ?? []).map(w => w.id)
+      if (existingIds.length > 0) {
+        const { error: delExErr } = await supabase
+          .from('workout_exercises')
+          .delete()
+          .in('workout_id', existingIds)
+        if (delExErr) return { error: delExErr }
+
+        const { error: delWkErr } = await supabase
+          .from('workouts')
+          .delete()
+          .eq('plan_id', plan.id)
+        if (delWkErr) return { error: delWkErr }
+      }
+
+      for (const workout of plan.workouts ?? []) {
+        const { error: wkErr } = await supabase
+          .from('workouts')
+          .upsert(
+            {
+              id: workout.id,
+              plan_id: plan.id,
+              name: workout.name,
+              muscle_group: workout.muscle_group ?? null,
+            },
+            { onConflict: 'id' },
+          )
+        if (wkErr) return { error: wkErr }
+
+        const exercises = (workout.workout_exercises ?? []).map((ex, idx) => ({
+          id: ex.id,
+          workout_id: workout.id,
+          exercise_name: ex.exercise_name,
+          target_sets: ex.target_sets ?? 3,
+          target_reps: ex.target_reps ?? '10',
+          order: ex.order ?? idx + 1,
+        }))
+        if (exercises.length > 0) {
+          const { error: exErr } = await supabase
+            .from('workout_exercises')
+            .upsert(exercises, { onConflict: 'id' })
+          if (exErr) return { error: exErr }
+        }
+      }
+      return { error: null }
+    }
+    case 'workout_plans_delete':
+      return supabase
+        .from('workout_plans')
+        .delete()
+        .eq('id', item.payload.plan_id)
+        .eq('user_id', item.userId)
   }
 }
 
@@ -150,5 +276,44 @@ export async function queueAndSync(item: OutboxInput): Promise<void> {
 
   if (navigator.onLine) {
     await syncPendingChanges()
+  }
+}
+
+export async function removeOutboxItem(id: string): Promise<void> {
+  await offlineDatabase.outbox.delete(id)
+}
+
+export async function updatePendingWaterAmount(id: string, amountMl: number): Promise<void> {
+  const existing = await offlineDatabase.outbox.get(id)
+  if (!existing || existing.table !== 'water_logs') return
+  await offlineDatabase.outbox.update(id, {
+    payload: {
+      ...existing.payload,
+      amount_ml: amountMl,
+    },
+  })
+}
+
+export async function clearPendingTodayWaterOutbox(
+  userId: string,
+  startIso: string,
+  endIso: string,
+): Promise<void> {
+  const items = await offlineDatabase.outbox.where('userId').equals(userId).toArray()
+  const idsToDelete = items
+    .filter(item => {
+      if (item.table === 'water_logs') {
+        const ts = item.payload.created_at ?? ''
+        return ts >= startIso && ts < endIso
+      }
+      if (item.table === 'water_logs_update') {
+        const ts = item.payload.created_at
+        return ts >= startIso && ts < endIso
+      }
+      return item.table === 'water_logs_delete'
+    })
+    .map(item => item.id)
+  if (idsToDelete.length > 0) {
+    await offlineDatabase.outbox.bulkDelete(idsToDelete)
   }
 }

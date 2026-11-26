@@ -21,6 +21,20 @@ import {
 } from './exerciseGuide'
 import { readExerciseMeta, saveExerciseMeta } from './exerciseNotesStore'
 import {
+  cachePlans,
+  findCachedPlan,
+  findCachedWorkout,
+  mergeRemoteAndCachedPlans,
+  mergeRemoteAndCachedSessions,
+  readCachedPlans,
+  readCachedSessions,
+  readCachedSetsForSession,
+  removeCachedPlan,
+  removeCachedSession,
+  upsertCachedPlan,
+  upsertCachedSession,
+} from './workoutOfflineCache'
+import {
   getStandbyWorkout,
   readStandbyWorkouts,
   removeStandbyWorkout,
@@ -163,5 +177,110 @@ describe('Workouts & Cardio Module', () => {
     expect(prog.best1RmKg).toBe(107.7)
     expect(prog.delta1RmKg).toBe(6.4)
     expect(prog.completedVolumeKg).toBe(800)
+  })
+
+  it('caches custom plans and offline workout sessions for immediate offline access & history', () => {
+    const store = new Map<string, string>()
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => { store.set(k, v) },
+        removeItem: (k: string) => { store.delete(k) },
+      },
+      configurable: true,
+    })
+
+    cachePlans([
+      {
+        id: 'plan-1',
+        user_id: 'u-1',
+        name: 'Upper Lower Offline',
+        created_at: '2026-11-20T10:00:00Z',
+        workouts: [
+          {
+            id: 'wk-1',
+            plan_id: 'plan-1',
+            name: 'Upper A',
+            workout_exercises: [
+              { id: 'ex-2', workout_id: 'wk-1', exercise_name: 'Rematore', target_sets: 3, target_reps: '10', order: 2 },
+              { id: 'ex-1', workout_id: 'wk-1', exercise_name: 'Panca Piana', target_sets: 4, target_reps: '8', order: 1 },
+            ],
+          },
+        ],
+      },
+    ] as never)
+
+    expect(readCachedPlans()).toHaveLength(1)
+    const found = findCachedWorkout('wk-1')
+    expect(found?.name).toBe('Upper A')
+    expect(found?.workout_exercises.map(e => e.exercise_name)).toEqual(['Panca Piana', 'Rematore'])
+
+    upsertCachedSession(
+      {
+        id: 'offline-sess-1',
+        user_id: 'u-1',
+        workout_id: 'wk-1',
+        workout_name: 'Upper A',
+        started_at: '2026-11-26T11:00:00Z',
+        ended_at: '2026-11-26T11:45:00Z',
+        duration_seconds: 2700,
+      },
+      [
+        {
+          id: 's1',
+          user_id: 'u-1',
+          session_id: 'offline-sess-1',
+          exercise_id: 'ex-1',
+          exercise_name: 'Panca Piana',
+          set_number: 1,
+          reps: 8,
+          weight_kg: 80,
+          completed_at: '2026-11-26T11:10:00Z',
+        },
+      ],
+    )
+
+    expect(readCachedSessions()).toHaveLength(1)
+    expect(readCachedSetsForSession('offline-sess-1')).toHaveLength(1)
+
+    const merged = mergeRemoteAndCachedSessions(
+      [
+        {
+          id: 'remote-sess-1',
+          user_id: 'u-1',
+          workout_id: null,
+          workout_name: 'Corsa 5 km (5:30/km)',
+          started_at: '2026-11-25T10:00:00Z',
+          ended_at: '2026-11-25T10:28:00Z',
+          duration_seconds: 1680,
+        },
+      ],
+      readCachedSessions(),
+      new Set(['offline-sess-1']),
+    )
+    expect(merged.map(s => s.id)).toEqual(['offline-sess-1', 'remote-sess-1'])
+
+    removeCachedSession('offline-sess-1')
+    expect(readCachedSessions()).toHaveLength(0)
+
+    upsertCachedPlan({
+      id: 'plan-offline-2',
+      user_id: 'u-1',
+      name: 'Creata Offline',
+      created_at: '2026-11-26T12:00:00Z',
+      workouts: [],
+    } as never)
+    expect(findCachedPlan('plan-offline-2')?.name).toBe('Creata Offline')
+
+    const mergedPlans = mergeRemoteAndCachedPlans(
+      [{ id: 'plan-1', user_id: 'u-1', name: 'Upper Lower Offline', created_at: '2026-11-20T10:00:00Z', workouts: [] }] as never,
+      readCachedPlans(),
+      new Set(['plan-offline-2']),
+      new Set(['plan-1']),
+    )
+    expect(mergedPlans.map(p => p.id)).toEqual(['plan-offline-2'])
+
+    removeCachedPlan('plan-offline-2')
+    expect(findCachedPlan('plan-offline-2')).toBeUndefined()
   })
 })

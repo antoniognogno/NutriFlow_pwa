@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { queueAndSync } from '@/features/offline/useOfflineSync'
 import { createClient } from '@/lib/supabase/client'
 import { ExerciseNameField } from './ExerciseNameField'
+import { upsertCachedSession } from './workoutOfflineCache'
 import { formatDuration } from './workoutUtils'
 
 export interface EditableSession {
@@ -217,6 +218,7 @@ export function SessionEditor({
         })
       }
 
+      upsertCachedSession(updatedSession, normalizedSets)
       setSession(updatedSession)
       setSets(normalizedSets)
       setRemovedSetIds([])

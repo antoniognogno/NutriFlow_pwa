@@ -6,18 +6,27 @@ import { ArrowLeft, Clock3, Dumbbell, Footprints, Pencil, Trash2 } from 'lucide-
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { offlineDatabase } from '@/features/offline/database'
 import { moveToTrash, type SetRowSnapshot } from '@/features/trash/trashStore'
 import { createClient } from '@/lib/supabase/client'
 import { SessionEditor, type EditableSession, type EditableSet } from './SessionEditor'
+import {
+  cacheSetsForSession,
+  mergeRemoteAndCachedSessions,
+  readCachedSessions,
+  readCachedSetsForSession,
+  removeCachedSession,
+  saveCachedSessions,
+} from './workoutOfflineCache'
 import { formatDuration, isCardioSession } from './workoutUtils'
 
 export function WorkoutHistoryView() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [sessions, setSessions] = useState<EditableSession[]>([])
+  const [sessions, setSessions] = useState<EditableSession[]>(() => readCachedSessions())
   const [filter, setFilter] = useState<'cardio' | 'workouts'>('workouts')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(() => readCachedSessions().length === 0)
   const [selectedSession, setSelectedSession] = useState<{
     session: EditableSession
     sets: EditableSet[]
@@ -25,7 +34,10 @@ export function WorkoutHistoryView() {
   } | null>(null)
 
   const loadSessions = useCallback(async () => {
-    setIsLoading(true)
+    const cached = readCachedSessions()
+    if (cached.length === 0) {
+      setIsLoading(true)
+    }
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
@@ -33,6 +45,23 @@ export function WorkoutHistoryView() {
         router.replace('/login')
         return
       }
+
+      const pendingOutbox = await offlineDatabase.outbox
+        .where('userId')
+        .equals(user.id)
+        .toArray()
+      const pendingIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_sessions')
+          .map(item => (item.payload as { id?: string }).id ?? '')
+          .filter(Boolean),
+      )
+
+      if (!navigator.onLine) {
+        setSessions(cached)
+        return
+      }
+
       const { data, error } = await supabase
         .from('workout_sessions')
         .select('id, user_id, workout_id, workout_name, started_at, ended_at, duration_seconds')
@@ -41,8 +70,18 @@ export function WorkoutHistoryView() {
         .limit(50)
 
       if (!error && data) {
-        setSessions(data as EditableSession[])
+        const merged = mergeRemoteAndCachedSessions(
+          data as EditableSession[],
+          cached,
+          pendingIds,
+        )
+        setSessions(merged)
+        saveCachedSessions(merged)
+      } else {
+        setSessions(cached)
       }
+    } catch {
+      setSessions(readCachedSessions())
     } finally {
       setIsLoading(false)
     }
@@ -60,6 +99,16 @@ export function WorkoutHistoryView() {
   const visibleSessions = filter === 'cardio' ? cardioSessions : workoutSessions
 
   const openSessionEditor = async (item: EditableSession, editMode: boolean) => {
+    const localSets = readCachedSetsForSession(item.id)
+    if (!navigator.onLine) {
+      setSelectedSession({
+        session: item,
+        sets: localSets,
+        editMode,
+      })
+      return
+    }
+
     const { data, error } = await supabase
       .from('workout_sets')
       .select('id, user_id, session_id, exercise_id, exercise_name, set_number, reps, weight_kg, completed_at')
@@ -67,35 +116,50 @@ export function WorkoutHistoryView() {
       .order('completed_at', { ascending: true })
 
     if (error) {
+      if (localSets.length > 0) {
+        setSelectedSession({ session: item, sets: localSets, editMode })
+        return
+      }
       toast.error('Impossibile caricare le serie della sessione.')
       return
     }
+    const resolved = ((data ?? []) as EditableSet[]).length > 0 ? (data as EditableSet[]) : localSets
+    cacheSetsForSession(item.id, resolved)
     setSelectedSession({
       session: item,
-      sets: (data ?? []) as EditableSet[],
+      sets: resolved,
       editMode,
     })
   }
 
   const trashSession = async (item: EditableSession) => {
-    const { data: setsData } = await supabase
-      .from('workout_sets')
-      .select('id, user_id, session_id, exercise_id, exercise_name, set_number, reps, weight_kg, completed_at')
-      .eq('session_id', item.id)
+    let setsSnapshot: EditableSet[] = readCachedSetsForSession(item.id)
+    if (navigator.onLine) {
+      const { data: setsData } = await supabase
+        .from('workout_sets')
+        .select('id, user_id, session_id, exercise_id, exercise_name, set_number, reps, weight_kg, completed_at')
+        .eq('session_id', item.id)
+      if (setsData && setsData.length > 0) {
+        setsSnapshot = setsData as EditableSet[]
+      }
 
-    const { error } = await supabase.from('workout_sessions').delete().eq('id', item.id)
-    if (error) {
-      toast.error('Impossibile spostare nel cestino.')
-      return
+      const { error } = await supabase.from('workout_sessions').delete().eq('id', item.id)
+      if (error) {
+        toast.error('Impossibile spostare nel cestino.')
+        return
+      }
+    } else {
+      await offlineDatabase.outbox.delete(`workout_sessions:${item.id}`).catch(() => undefined)
     }
 
+    removeCachedSession(item.id)
     moveToTrash({
       id: `workout_session:${item.id}`,
       kind: 'workout_session',
       title: item.workout_name,
       subtitle: `${Math.max(1, Math.round((item.duration_seconds || 0) / 60))} min · ${new Date(item.started_at).toLocaleDateString('it-IT')}`,
       session: item,
-      sets: (setsData ?? []) as SetRowSnapshot[],
+      sets: setsSnapshot as SetRowSnapshot[],
     })
     setSessions(current => current.filter(row => row.id !== item.id))
     toast.success('Spostato nel cestino (30 giorni).')

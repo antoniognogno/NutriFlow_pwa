@@ -9,6 +9,13 @@ import { NextWorkoutCard } from "@/app/components/dashboard/home/NextWorkoutCard
 import { ProgressRings } from "@/app/components/dashboard/home/ProgressRings";
 import { RecentWins } from "@/app/components/dashboard/home/RecentWins";
 import { DEFAULT_WORKOUTS } from "@/features/workouts/defaultWorkouts";
+import { offlineDatabase } from "@/features/offline/database";
+import { readCachedProfileSettings, saveCachedProfileSettings } from "@/features/routine/profileGoalsStore";
+import {
+  cachePlans,
+  mergeRemoteAndCachedPlans,
+  readCachedPlans,
+} from "@/features/workouts/workoutOfflineCache";
 import type { PlanWithWorkoutsAndExercises, Workout, WorkoutExercise } from "@/lib/supabase/types";
 import useSWR from 'swr';
 
@@ -37,30 +44,58 @@ export type Win = {
 
 export default function DashboardPage() {
   const supabase = createClient()
-  const [username, setUsername] = useState<string | null>(null)
-  const [latestPlan, setLatestPlan] = useState<PlanWithWorkoutsAndExercises | null>(null);
+  const [username, setUsername] = useState<string | null>(
+    () => readCachedProfileSettings().username || null,
+  )
+  const [latestPlan, setLatestPlan] = useState<PlanWithWorkoutsAndExercises | null>(
+    () => readCachedPlans()[0] ?? null,
+  );
   const currentDate = getFormattedDate();
 
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      const [profileResponse, planResponse] = await Promise.all([
+      if (!navigator.onLine) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+
+      const [profileResponse, planResponse, pendingOutbox] = await Promise.all([
         supabase.from('profiles').select('username').single(),
         supabase.rpc('get_latest_plan_details'),
+        user ? offlineDatabase.outbox.where('userId').equals(user.id).toArray() : Promise.resolve([]),
       ]);
 
-      if (profileResponse.data) {
-        setUsername(profileResponse.data.username);
+      const hasPendingProfile = pendingOutbox.some(item => item.table === 'profiles');
+      if (!hasPendingProfile && profileResponse.data) {
+        const nextName = profileResponse.data.username ?? '';
+        setUsername(nextName || null);
+        saveCachedProfileSettings({ username: nextName });
       }
+
+      const pendingSyncIds = new Set<string>()
+      const pendingDeleteIds = new Set<string>()
+      for (const item of pendingOutbox) {
+        if (item.table === 'workout_plans_sync') {
+          pendingSyncIds.add(item.payload.plan.id)
+        } else if (item.table === 'workout_plans_delete') {
+          pendingDeleteIds.add(item.payload.plan_id)
+        }
+      }
+
       if (planResponse.data) {
-        setLatestPlan(planResponse.data as PlanWithWorkoutsAndExercises);
-      }
-      if (planResponse.error) {
-        console.error("Errore nel recupero del piano via RPC:", planResponse.error);
+        const remotePlan = planResponse.data as PlanWithWorkoutsAndExercises;
+        const merged = mergeRemoteAndCachedPlans(
+          [remotePlan],
+          readCachedPlans(),
+          pendingSyncIds,
+          pendingDeleteIds,
+        );
+        cachePlans(merged);
+        setLatestPlan(merged[0] ?? null);
       }
     }
 
-    fetchDashboardData();
+    void fetchDashboardData();
   }, [supabase]);
 
   const nextWorkout =

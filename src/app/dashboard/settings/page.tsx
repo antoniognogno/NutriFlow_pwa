@@ -12,8 +12,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { siteConfig } from '@/config/attributes'
 import { createClient } from '@/lib/supabase/client'
+import { offlineDatabase } from '@/features/offline/database'
+import { queueAndSync } from '@/features/offline/useOfflineSync'
+import {
+  readCachedWaterState,
+  saveCachedWaterState,
+} from '@/features/nutrition/waterOfflineCache'
 import { readHabitLogs, readHabits } from '@/features/routine/habitStore'
-import { computeBmi, readBodyProfile, saveBodyProfile } from '@/features/routine/profileGoalsStore'
+import {
+  computeBmi,
+  readBodyProfile,
+  readCachedProfileSettings,
+  saveBodyProfile,
+  saveCachedProfileSettings,
+} from '@/features/routine/profileGoalsStore'
 import { readWeightLogs, upsertWeightEntry } from '@/features/routine/weightStore'
 import { readTrashItems } from '@/features/trash/trashStore'
 import { getWeeklyWorkoutGoal, saveWeeklyWorkoutGoal } from '@/app/components/dashboard/home/progressUtils'
@@ -28,7 +40,7 @@ export default function SettingsPage() {
 
   const [userId, setUserId] = useState<string | null>(null)
   const [email, setEmail] = useState<string>('')
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(() => readCachedProfileSettings().username)
   const [weightKgInput, setWeightKgInput] = useState(() => {
     const bp = readBodyProfile()
     const logs = readWeightLogs()
@@ -48,11 +60,11 @@ export default function SettingsPage() {
     return bp.age !== null ? String(bp.age) : ''
   })
   const [sexInput, setSexInput] = useState<'m' | 'f' | ''>(() => readBodyProfile().sex)
-  const [waterGoalMl, setWaterGoalMl] = useState(2500)
+  const [waterGoalMl, setWaterGoalMl] = useState(() => readCachedProfileSettings().water_goal_ml)
   const [weeklyWorkoutGoal, setWeeklyWorkoutGoal] = useState(() => getWeeklyWorkoutGoal())
-  const [dietType, setDietType] = useState('')
-  const [allergies, setAllergies] = useState('')
-  const [dislikedFoods, setDislikedFoods] = useState('')
+  const [dietType, setDietType] = useState(() => readCachedProfileSettings().diet_type)
+  const [allergies, setAllergies] = useState(() => readCachedProfileSettings().allergies.join(', '))
+  const [dislikedFoods, setDislikedFoods] = useState(() => readCachedProfileSettings().disliked_foods.join(', '))
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -67,20 +79,40 @@ export default function SettingsPage() {
         }
         setUserId(user.id)
         setEmail(user.email ?? '')
+        setIsLoading(false)
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('username, water_goal_ml, diet_type, allergies, disliked_foods')
-          .eq('id', user.id)
-          .maybeSingle()
+        if (!navigator.onLine) return
 
-        if (profile) {
-          setUsername(profile.username ?? '')
-          setWaterGoalMl(profile.water_goal_ml ?? 2500)
-          setDietType(profile.diet_type ?? '')
-          setAllergies((profile.allergies ?? []).join(', '))
-          setDislikedFoods((profile.disliked_foods ?? []).join(', '))
+        const [profileRes, pendingOutbox] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('username, water_goal_ml, diet_type, allergies, disliked_foods')
+            .eq('id', user.id)
+            .maybeSingle(),
+          offlineDatabase.outbox.where('userId').equals(user.id).toArray(),
+        ])
+
+        const hasPendingProfile = pendingOutbox.some(
+          item => item.table === 'profiles' || item.table === 'profiles_water_goal',
+        )
+
+        const profile = profileRes.data
+        if (profile && !hasPendingProfile) {
+          const cached = saveCachedProfileSettings({
+            username: profile.username ?? '',
+            water_goal_ml: profile.water_goal_ml ?? 2500,
+            diet_type: profile.diet_type ?? '',
+            allergies: profile.allergies ?? [],
+            disliked_foods: profile.disliked_foods ?? [],
+          })
+          setUsername(cached.username)
+          setWaterGoalMl(cached.water_goal_ml)
+          setDietType(cached.diet_type)
+          setAllergies(cached.allergies.join(', '))
+          setDislikedFoods(cached.disliked_foods.join(', '))
         }
+      } catch (error) {
+        console.error('Errore caricamento profilo:', error)
       } finally {
         setIsLoading(false)
       }
@@ -108,16 +140,56 @@ export default function SettingsPage() {
       if (savedBody.weightKg !== null) {
         upsertWeightEntry(savedBody.weightKg)
       }
-      const { error } = await supabase.from('profiles').upsert([{
-        id: userId,
-        username: username.trim() || 'Atleta',
+
+      const cleanedAllergies = allergies.split(',').map(s => s.trim()).filter(Boolean)
+      const cleanedDisliked = dislikedFoods.split(',').map(s => s.trim()).filter(Boolean)
+      const cleanUsername = username.trim() || 'Atleta'
+      const cleanDiet = dietType.trim()
+
+      saveCachedProfileSettings({
+        username: cleanUsername,
         water_goal_ml: waterGoalMl,
-        diet_type: dietType.trim() || null,
-        allergies: allergies.split(',').map(s => s.trim()).filter(Boolean),
-        disliked_foods: dislikedFoods.split(',').map(s => s.trim()).filter(Boolean),
+        diet_type: cleanDiet,
+        allergies: cleanedAllergies,
+        disliked_foods: cleanedDisliked,
+      })
+      saveCachedWaterState(readCachedWaterState().logs, waterGoalMl)
+
+      const profilePayload = {
+        id: userId,
+        username: cleanUsername,
+        water_goal_ml: waterGoalMl,
+        diet_type: cleanDiet || null,
+        allergies: cleanedAllergies,
+        disliked_foods: cleanedDisliked,
         updated_at: new Date().toISOString(),
-      }])
-      if (error) throw error
+      }
+
+      const queueProfileSync = async () => {
+        await queueAndSync({
+          id: `profiles:${userId}`,
+          userId,
+          table: 'profiles',
+          conflictTarget: 'id',
+          payload: profilePayload,
+        })
+      }
+
+      if (!navigator.onLine) {
+        await queueProfileSync()
+        window.dispatchEvent(new Event('nutriflow:data-updated'))
+        toast.success('Impostazioni salvate offline (verranno sincronizzate al ritorno della rete).')
+        return
+      }
+
+      const { error } = await supabase.from('profiles').upsert([profilePayload])
+      if (error) {
+        await queueProfileSync()
+        window.dispatchEvent(new Event('nutriflow:data-updated'))
+        toast.success('Impostazioni salvate in locale (sync profilo in coda).')
+        return
+      }
+
       window.dispatchEvent(new Event('nutriflow:data-updated'))
       toast.success('Impostazioni salvate.')
     } catch (error) {

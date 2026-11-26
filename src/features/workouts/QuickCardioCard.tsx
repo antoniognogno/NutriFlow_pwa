@@ -16,6 +16,7 @@ import {
   readCardioPresets,
   saveCardioPresets,
 } from './presetStorage'
+import { upsertCachedSession } from './workoutOfflineCache'
 import { formatPacePerKm } from './workoutUtils'
 
 interface QuickCardioCardProps {
@@ -52,21 +53,23 @@ export function QuickCardioCard({ onTrashChange }: QuickCardioCardProps) {
       const startedAt = new Date(now.getTime() - mins * 60_000)
       const paceStr = formatPacePerKm(km, mins)
       const title = customTitle ? `${customTitle} (${paceStr})` : `Corsa ${km} km (${paceStr})`
+      const sessionPayload = {
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        workout_id: null,
+        workout_name: title,
+        started_at: startedAt.toISOString(),
+        ended_at: now.toISOString(),
+        duration_seconds: mins * 60,
+      }
 
+      upsertCachedSession(sessionPayload, [])
       await queueAndSync({
-        id: `workout_sessions:${crypto.randomUUID()}`,
+        id: `workout_sessions:${sessionPayload.id}`,
         userId: user.id,
         table: 'workout_sessions',
         conflictTarget: 'id',
-        payload: {
-          id: crypto.randomUUID(),
-          user_id: user.id,
-          workout_id: null,
-          workout_name: title,
-          started_at: startedAt.toISOString(),
-          ended_at: now.toISOString(),
-          duration_seconds: mins * 60,
-        },
+        payload: sessionPayload,
       })
       toast.success(`${customTitle ?? `Corsa ${km} km`} salvata · passo ${paceStr}`)
       window.dispatchEvent(new Event('nutriflow:data-updated'))

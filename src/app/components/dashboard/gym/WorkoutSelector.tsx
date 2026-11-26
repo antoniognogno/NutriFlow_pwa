@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { Dumbbell, Trash2 } from 'lucide-react';
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types';
 import { Button } from '@/components/ui/button';
+import { queueAndSync, removeOutboxItem } from '@/features/offline/useOfflineSync';
 import { moveToTrash } from '@/features/trash/trashStore';
+import { removeCachedPlan } from '@/features/workouts/workoutOfflineCache';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,17 +40,43 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
   const handleDeletePlan = async () => {
     setIsDeleting(true);
     setError(null);
+    removeCachedPlan(plan.id);
+    await removeOutboxItem(`workout_plans_sync:${plan.id}`);
+
+    moveToTrash({
+      id: `workout_plan:${plan.id}`,
+      kind: 'workout_plan',
+      title: plan.name,
+      subtitle: `${plan.workouts?.length ?? 0} allenamenti`,
+      plan,
+    });
+
+    const queuePlanDelete = async () => {
+      await queueAndSync({
+        id: `workout_plans_delete:${plan.id}`,
+        userId: plan.user_id,
+        table: 'workout_plans_delete',
+        payload: { plan_id: plan.id },
+      });
+    };
+
+    if (!navigator.onLine) {
+      await queuePlanDelete();
+      onDeleteSuccess();
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      toast.success("Scheda spostata nel cestino offline (verrà sincronizzata).");
+      setIsDeleting(false);
+      setConfirmText("");
+      return;
+    }
+
     const { error } = await supabase.from('workout_plans').delete().eq('id', plan.id);
     if (error) {
-      setError("Errore durante l'eliminazione: " + error.message);
+      await queuePlanDelete();
+      onDeleteSuccess();
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      toast.success("Scheda rimossa in locale (eliminazione in coda sync).");
     } else {
-      moveToTrash({
-        id: `workout_plan:${plan.id}`,
-        kind: 'workout_plan',
-        title: plan.name,
-        subtitle: `${plan.workouts?.length ?? 0} allenamenti`,
-        plan,
-      });
       onDeleteSuccess();
       window.dispatchEvent(new Event('nutriflow:data-updated'));
       toast.success("Scheda spostata nel cestino (30 giorni).");

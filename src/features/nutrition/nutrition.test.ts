@@ -7,6 +7,21 @@ import {
   macroPercent,
 } from './nutritionUtils'
 import { scaleNutrientsForGrams } from './openFoodFacts'
+import {
+  appendCachedWaterLog,
+  clearCachedWaterLogs,
+  readCachedWaterState,
+  removeLastCachedWaterLog,
+  sumWaterLogs,
+  updateLastCachedWaterLog,
+} from './waterOfflineCache'
+import {
+  mergeRemoteAndCachedMeals,
+  readCachedMeals,
+  removeCachedMeal,
+  saveCachedMeals,
+  upsertCachedMeal,
+} from './mealOfflineCache'
 
 describe('Nutrition, Personalized Macros & OpenFoodFacts', () => {
   it('ships with valid 1-tap meal presets', () => {
@@ -65,5 +80,81 @@ describe('Nutrition, Personalized Macros & OpenFoodFacts', () => {
       170,
     )
     expect(scaled).toEqual({ calories: 102, protein_g: 17, carbs_g: 6, fats_g: 0 })
+  })
+
+  it('caches and edits daily water logs & meals offline cleanly', () => {
+    const store = new Map<string, string>()
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => { store.set(k, v) },
+        removeItem: (k: string) => { store.delete(k) },
+      },
+      configurable: true,
+    })
+
+    appendCachedWaterLog({ localId: 'w-1', amount_ml: 250, created_at: '2026-11-26T09:00:00.000Z' }, 3000)
+    appendCachedWaterLog({ localId: 'w-2', amount_ml: 500, created_at: '2026-11-26T10:00:00.000Z' }, 3000)
+    expect(sumWaterLogs(readCachedWaterState().logs)).toBe(750)
+    expect(readCachedWaterState().dailyGoal).toBe(3000)
+
+    updateLastCachedWaterLog(650)
+    expect(sumWaterLogs(readCachedWaterState().logs)).toBe(900)
+
+    const removed = removeLastCachedWaterLog()
+    expect(removed.removed?.amount_ml).toBe(650)
+    expect(sumWaterLogs(removed.state.logs)).toBe(250)
+
+    clearCachedWaterLogs()
+    expect(sumWaterLogs(readCachedWaterState().logs)).toBe(0)
+
+    saveCachedMeals([
+      {
+        id: 'meal-remote',
+        user_id: 'u-1',
+        meal_name: 'Pranzo',
+        description: '',
+        calories: 600,
+        protein_g: 45,
+        carbs_g: 65,
+        fats_g: 14,
+        logged_at: '2026-11-26T12:00:00.000Z',
+      },
+    ])
+    upsertCachedMeal({
+      id: 'meal-offline',
+      user_id: 'u-1',
+      meal_name: 'Spuntino',
+      description: '',
+      calories: 220,
+      protein_g: 20,
+      carbs_g: 25,
+      fats_g: 4,
+      logged_at: '2026-11-26T16:00:00.000Z',
+    })
+    expect(readCachedMeals().map(m => m.id)).toEqual(['meal-offline', 'meal-remote'])
+
+    const merged = mergeRemoteAndCachedMeals(
+      [
+        {
+          id: 'meal-remote',
+          user_id: 'u-1',
+          meal_name: 'Pranzo',
+          description: '',
+          calories: 600,
+          protein_g: 45,
+          carbs_g: 65,
+          fats_g: 14,
+          logged_at: '2026-11-26T12:00:00.000Z',
+        },
+      ],
+      readCachedMeals(),
+      new Set(['meal-offline']),
+      new Set(['meal-remote']),
+    )
+    expect(merged.map(m => m.id)).toEqual(['meal-offline'])
+
+    removeCachedMeal('meal-offline')
+    expect(readCachedMeals().map(m => m.id)).toEqual(['meal-remote'])
   })
 })

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { LifeFlowDatabase } from '@/features/core/database'
+import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types'
 
 type AppTables = LifeFlowDatabase['public']['Tables']
 
@@ -67,9 +68,97 @@ type OutboxItem =
   | {
       id: string
       userId: string
+      table: 'meal_logs_delete'
+      payload: { id: string }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
       table: 'water_logs'
       conflictTarget?: never
       payload: AppTables['water_logs']['Insert']
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'water_logs_update'
+      payload: {
+        id: number
+        user_id: string
+        amount_ml: number
+        created_at: string
+      }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'water_logs_delete'
+      payload: { id: number }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'water_logs_reset_day'
+      payload: {
+        start_iso: string
+        end_iso: string
+      }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'profiles'
+      conflictTarget: 'id'
+      payload: AppTables['profiles']['Insert']
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'profiles_water_goal'
+      payload: {
+        water_goal_ml: number
+        updated_at: string
+      }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'workout_plans_sync'
+      payload: {
+        plan: PlanWithWorkoutsAndExercises
+      }
+      createdAt: number
+      attempts: number
+      lastError?: string
+    }
+  | {
+      id: string
+      userId: string
+      table: 'workout_plans_delete'
+      payload: {
+        plan_id: string
+      }
       createdAt: number
       attempts: number
       lastError?: string

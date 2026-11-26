@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from "react";
 import { chartColors } from "@/config/chartColors";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase/client";
+import { buildHourlyWaterChartData, readCachedWaterState } from "@/features/nutrition/waterOfflineCache";
 
 export interface WaterChartData {
   time: string;
@@ -16,27 +17,24 @@ export interface WaterChartData {
 }
 
 const waterDataFetcher = async (): Promise<WaterChartData[]> => {
+    const cached = readCachedWaterState();
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return buildHourlyWaterChartData(cached.logs, 6, 23);
+    }
     const supabase = createClient();
-    const today = new Date().toISOString().split('T')[0];
+    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
     const { data, error } = await supabase
         .from('water_logs')
         .select('amount_ml, created_at')
-        .gte('created_at', `${today}T00:00:00.000Z`)
-        .lte('created_at', `${today}T23:59:59.999Z`);
-    if (error) throw error;
-    
-    const hourlyData: { [key: string]: number } = {};
-    for (let i = 6; i < 24; i++) {
-        hourlyData[i.toString().padStart(2, '0')] = 0;
+        .gte('created_at', startOfDay.toISOString())
+        .lt('created_at', endOfDay.toISOString());
+    if (error || !data) {
+        return buildHourlyWaterChartData(cached.logs, 6, 23);
     }
-    data.forEach(log => {
-        const hour = new Date(log.created_at).getHours().toString().padStart(2, '0');
-        if (hourlyData[hour] !== undefined) hourlyData[hour] += log.amount_ml;
-    });
-    return Object.entries(hourlyData).map(([hour, total_ml]) => ({
-        time: `${hour}:00`,
-        ml: total_ml,
-    }));
+
+    return buildHourlyWaterChartData(data, 6, 23);
 };
 
 export function WaterLogChart() {
@@ -51,7 +49,12 @@ export function WaterLogChart() {
 
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+    const refreshChart = () => {
+      void mutate();
+    };
+    window.addEventListener('nutriflow:data-updated', refreshChart);
+    return () => window.removeEventListener('nutriflow:data-updated', refreshChart);
+  }, [mutate]);
 
   const colors = theme === "dark" ? chartColors.dark : chartColors.light;
   

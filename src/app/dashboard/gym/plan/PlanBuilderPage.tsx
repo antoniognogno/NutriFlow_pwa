@@ -10,10 +10,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ExerciseNameField } from '@/features/workouts/ExerciseNameField'
 import { readExerciseMeta, saveExerciseMeta } from '@/features/workouts/exerciseNotesStore'
+import { findCachedPlan, upsertCachedPlan } from '@/features/workouts/workoutOfflineCache'
+import { offlineDatabase } from '@/features/offline/database'
+import { queueAndSync } from '@/features/offline/useOfflineSync'
 import { createClient } from '@/lib/supabase/client'
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types'
 
 interface ExerciseForm {
+  id?: string
   exercise_name: string
   target_sets: string
   target_reps: string
@@ -24,6 +28,7 @@ interface ExerciseForm {
 }
 
 interface WorkoutForm {
+  id?: string
   name: string
   exercises: ExerciseForm[]
 }
@@ -76,8 +81,54 @@ export default function PlanBuilderPage() {
   useEffect(() => {
     if (!isEditMode || !planId) return
     let active = true
+
+    const applyPlanToForm = (plan: PlanWithWorkoutsAndExercises) => {
+      setPlanName(plan.name)
+      setOriginalWorkoutIds((plan.workouts ?? []).map(w => w.id))
+      setWorkouts(
+        (plan.workouts ?? []).map(w => ({
+          id: w.id,
+          name: w.name,
+          exercises: [...(w.workout_exercises ?? [])]
+            .sort((a, b) => a.order - b.order)
+            .map(ex => {
+              const meta = readExerciseMeta(ex.exercise_name)
+              return {
+                id: ex.id,
+                exercise_name: ex.exercise_name,
+                target_sets: String(ex.target_sets ?? 3),
+                target_reps: String(ex.target_reps ?? '10'),
+                rir: meta?.rir ?? '',
+                restSeconds: meta?.restSeconds ? String(meta.restSeconds) : '',
+                supersetGroup: meta?.supersetGroup ?? '',
+                note: meta?.note ?? '',
+              }
+            }),
+        })),
+      )
+    }
+
     const loadPlan = async () => {
+      const cachedPlan = findCachedPlan(planId)
+      if (cachedPlan && active) {
+        applyPlanToForm(cachedPlan)
+        setIsLoading(false)
+      }
+
+      if (!navigator.onLine) {
+        if (!cachedPlan && active) {
+          toast.error('Scheda non presente nella cache offline.')
+          setIsLoading(false)
+        }
+        return
+      }
+
       try {
+        const pendingSync = await offlineDatabase.outbox.get(`workout_plans_sync:${planId}`)
+        if (pendingSync && cachedPlan) {
+          return
+        }
+
         const { data, error } = await supabase
           .from('workout_plans')
           .select('*, workouts(*, workout_exercises(*))')
@@ -88,30 +139,13 @@ export default function PlanBuilderPage() {
         const plan = data as PlanWithWorkoutsAndExercises
         if (!active || !plan) return
 
-        setPlanName(plan.name)
-        setOriginalWorkoutIds(plan.workouts.map(w => w.id))
-        setWorkouts(
-          plan.workouts.map(w => ({
-            name: w.name,
-            exercises: [...(w.workout_exercises ?? [])]
-              .sort((a, b) => a.order - b.order)
-              .map(ex => {
-                const meta = readExerciseMeta(ex.exercise_name)
-                return {
-                  exercise_name: ex.exercise_name,
-                  target_sets: String(ex.target_sets ?? 3),
-                  target_reps: String(ex.target_reps ?? '10'),
-                  rir: meta?.rir ?? '',
-                  restSeconds: meta?.restSeconds ? String(meta.restSeconds) : '',
-                  supersetGroup: meta?.supersetGroup ?? '',
-                  note: meta?.note ?? '',
-                }
-              }),
-          })),
-        )
+        upsertCachedPlan(plan)
+        applyPlanToForm(plan)
       } catch (error) {
         console.error('Errore caricamento scheda:', error)
-        toast.error('Impossibile caricare la scheda.')
+        if (!cachedPlan) {
+          toast.error('Impossibile caricare la scheda.')
+        }
       } finally {
         if (active) setIsLoading(false)
       }
@@ -245,74 +279,134 @@ export default function PlanBuilderPage() {
     }
     setIsSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session: authSession } } = await supabase.auth.getSession()
+      const user = authSession?.user
       if (!user) throw new Error('Utente non autenticato.')
 
-      let targetPlanId = planId
-      if (isEditMode && targetPlanId) {
-        const { error: planErr } = await supabase
-          .from('workout_plans')
-          .update({ name: planName.trim() })
-          .eq('id', targetPlanId)
-        if (planErr) throw planErr
+      const targetPlanId = isEditMode && planId ? planId : crypto.randomUUID()
+      const existingCached = isEditMode ? findCachedPlan(targetPlanId) : undefined
+      const createdAt = existingCached?.created_at ?? new Date().toISOString()
 
-        if (originalWorkoutIds.length > 0) {
-          const { error: delExErr } = await supabase
-            .from('workout_exercises')
-            .delete()
-            .in('workout_id', originalWorkoutIds)
-          if (delExErr) throw delExErr
-        }
-        const { error: delWkErr } = await supabase
-          .from('workouts')
-          .delete()
-          .eq('plan_id', targetPlanId)
-        if (delWkErr) throw delWkErr
-      } else {
-        const { data: createdPlan, error: planErr } = await supabase
-          .from('workout_plans')
-          .insert({ name: planName.trim(), user_id: user.id })
-          .select('id')
-          .single()
-        if (planErr || !createdPlan) throw planErr ?? new Error('Creazione fallita.')
-        targetPlanId = createdPlan.id
-      }
-
-      for (const workout of workouts) {
-        if (!workout.name.trim()) continue
-        const { data: wData, error: wErr } = await supabase
-          .from('workouts')
-          .insert({ name: workout.name.trim(), plan_id: targetPlanId! })
-          .select('id')
-          .single()
-        if (wErr || !wData) throw wErr ?? new Error('Errore inserimento giorno.')
-
-        const exercisesToInsert = workout.exercises
-          .filter(ex => ex.exercise_name.trim())
-          .map((ex, idx) => {
-            const parsedRest = ex.restSeconds ? Number.parseInt(ex.restSeconds, 10) : null
-            saveExerciseMeta(ex.exercise_name, {
-              rir: ex.rir,
-              note: ex.note,
-              restSeconds: Number.isFinite(parsedRest) ? parsedRest : null,
-              supersetGroup: ex.supersetGroup || null,
+      const builtWorkouts = workouts
+        .filter(w => w.name.trim())
+        .map(workout => {
+          const workoutId = workout.id ?? crypto.randomUUID()
+          const validExercises = workout.exercises
+            .filter(ex => ex.exercise_name.trim())
+            .map((ex, idx) => {
+              const parsedRest = ex.restSeconds ? Number.parseInt(ex.restSeconds, 10) : null
+              saveExerciseMeta(ex.exercise_name, {
+                rir: ex.rir,
+                note: ex.note,
+                restSeconds: Number.isFinite(parsedRest) ? parsedRest : null,
+                supersetGroup: ex.supersetGroup || null,
+              })
+              return {
+                id: ex.id ?? crypto.randomUUID(),
+                workout_id: workoutId,
+                exercise_name: ex.exercise_name.trim(),
+                target_sets: Number.parseInt(ex.target_sets, 10) || 3,
+                target_reps: ex.target_reps.trim() || '10',
+                order: idx + 1,
+              }
             })
-            return {
-              workout_id: wData.id,
-              exercise_name: ex.exercise_name.trim(),
-              target_sets: Number.parseInt(ex.target_sets, 10) || 3,
-              target_reps: ex.target_reps.trim() || '10',
-              order: idx + 1,
-            }
-          })
 
-        if (exercisesToInsert.length > 0) {
-          const { error: exErr } = await supabase.from('workout_exercises').insert(exercisesToInsert)
-          if (exErr) throw exErr
-        }
+          return {
+            id: workoutId,
+            plan_id: targetPlanId,
+            name: workout.name.trim(),
+            muscle_group: null,
+            workout_exercises: validExercises,
+          }
+        })
+
+      const builtPlan: PlanWithWorkoutsAndExercises = {
+        id: targetPlanId,
+        name: planName.trim(),
+        user_id: user.id,
+        created_at: createdAt,
+        workouts: builtWorkouts,
       }
 
-      toast.success(isEditMode ? 'Scheda aggiornata!' : 'Nuova scheda creata!')
+      upsertCachedPlan(builtPlan)
+
+      const enqueuePlanOffline = async () => {
+        await queueAndSync({
+          id: `workout_plans_sync:${targetPlanId}`,
+          userId: user.id,
+          table: 'workout_plans_sync',
+          payload: { plan: builtPlan },
+        })
+      }
+
+      if (!navigator.onLine) {
+        await enqueuePlanOffline()
+        toast.success(
+          isEditMode
+            ? 'Modifiche scheda salvate offline!'
+            : 'Nuova scheda creata offline: già pronta da avviare!',
+        )
+        window.dispatchEvent(new Event('nutriflow:data-updated'))
+        navigate('/dashboard/gym')
+        return
+      }
+
+      try {
+        if (isEditMode) {
+          const { error: planErr } = await supabase
+            .from('workout_plans')
+            .update({ name: builtPlan.name })
+            .eq('id', targetPlanId)
+          if (planErr) throw planErr
+
+          if (originalWorkoutIds.length > 0) {
+            const { error: delExErr } = await supabase
+              .from('workout_exercises')
+              .delete()
+              .in('workout_id', originalWorkoutIds)
+            if (delExErr) throw delExErr
+          }
+          const { error: delWkErr } = await supabase
+            .from('workouts')
+            .delete()
+            .eq('plan_id', targetPlanId)
+          if (delWkErr) throw delWkErr
+        } else {
+          const { error: planErr } = await supabase
+            .from('workout_plans')
+            .insert({
+              id: builtPlan.id,
+              name: builtPlan.name,
+              user_id: user.id,
+              created_at: builtPlan.created_at,
+            })
+          if (planErr) throw planErr
+        }
+
+        for (const workout of builtPlan.workouts) {
+          const { error: wErr } = await supabase
+            .from('workouts')
+            .insert({
+              id: workout.id,
+              name: workout.name,
+              plan_id: targetPlanId,
+            })
+          if (wErr) throw wErr
+
+          if (workout.workout_exercises.length > 0) {
+            const { error: exErr } = await supabase
+              .from('workout_exercises')
+              .insert(workout.workout_exercises)
+            if (exErr) throw exErr
+          }
+        }
+
+        toast.success(isEditMode ? 'Scheda aggiornata!' : 'Nuova scheda creata!')
+      } catch {
+        await enqueuePlanOffline()
+        toast.success('Scheda salvata in locale (verrà sincronizzata online).')
+      }
+
       window.dispatchEvent(new Event('nutriflow:data-updated'))
       navigate('/dashboard/gym')
     } catch (error) {

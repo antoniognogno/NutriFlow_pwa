@@ -5,6 +5,11 @@ import Link from 'next/link'
 import { ArrowRight, Bell, Check, Droplets, ListChecks, Pause, Pill, Play, RotateCcw, Timer, Wifi, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  appendCachedWaterLog,
+  readCachedWaterState,
+  sumWaterLogs,
+} from '@/features/nutrition/waterOfflineCache'
 import { queueAndSync, useOfflineSync } from '@/features/offline/useOfflineSync'
 import { readHabitLogs, readHabits, syncCreatineHabit } from '@/features/routine/habitStore'
 import { readWeightLogs } from '@/features/routine/weightStore'
@@ -93,6 +98,15 @@ export function TodayWidget() {
       start.setHours(0, 0, 0, 0)
       const end = new Date(start)
       end.setDate(end.getDate() + 1)
+
+      const cachedWater = sumWaterLogs(readCachedWaterState().logs)
+      if (!navigator.onLine) {
+        const routineCreatineDone = (readHabitLogs()[todayKey] ?? []).includes('creatine')
+        setCreatineAmount(routineCreatineDone ? CREATINE_GRAMS : null)
+        setWaterMlToday(cachedWater)
+        setIsLoading(false)
+        return
+      }
 
       const [creatineResult, waterResult, focusResult] = await Promise.all([
         supabase
@@ -223,24 +237,38 @@ export function TodayWidget() {
 
   const quickAddWater = async (amount: number) => {
     if (!userId) return
-    setWaterMlToday(prev => prev + amount)
+    const nowIso = new Date().toISOString()
+    const outboxId = `water_logs:${crypto.randomUUID()}`
+    appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: nowIso })
+    setWaterMlToday(sumWaterLogs(readCachedWaterState().logs))
     try {
       if (!navigator.onLine) {
         await queueAndSync({
-          id: `water_logs:${crypto.randomUUID()}`,
+          id: outboxId,
           userId,
           table: 'water_logs',
           payload: {
             user_id: userId,
             amount_ml: amount,
-            created_at: new Date().toISOString(),
+            created_at: nowIso,
           },
         })
       } else {
         const { error } = await supabase
           .from('water_logs')
           .insert([{ user_id: userId, amount_ml: amount }])
-        if (error) throw error
+        if (error) {
+          await queueAndSync({
+            id: outboxId,
+            userId,
+            table: 'water_logs',
+            payload: {
+              user_id: userId,
+              amount_ml: amount,
+              created_at: nowIso,
+            },
+          })
+        }
       }
       toast.success(`+${amount} ml registrati`)
       window.dispatchEvent(new Event('nutriflow:data-updated'))

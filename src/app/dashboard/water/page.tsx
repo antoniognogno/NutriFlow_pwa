@@ -23,12 +23,34 @@ import {
 import { Check, GlassWater, Droplet, Milk, Pencil, Plus, RotateCcw, SlidersHorizontal, Undo2, Utensils, Waves, X } from "lucide-react";
 import { toast } from "sonner";
 import { WaterLogChart } from "@/app/components/dashboard/WaterLogChart";
-import { queueAndSync } from "@/features/offline/useOfflineSync";
+import { offlineDatabase } from "@/features/offline/database";
+import {
+  clearPendingTodayWaterOutbox,
+  queueAndSync,
+  removeOutboxItem,
+  updatePendingWaterAmount,
+} from "@/features/offline/useOfflineSync";
+import {
+  appendCachedWaterLog,
+  buildHourlyWaterChartData,
+  clearCachedWaterLogs,
+  getTodayWaterDateKey,
+  readCachedWaterState,
+  removeLastCachedWaterLog,
+  saveCachedWaterState,
+  sumWaterLogs,
+  updateLastCachedWaterLog,
+  type CachedWaterLog,
+} from "@/features/nutrition/waterOfflineCache";
 import {
   readWaterPresets,
   saveWaterPresets,
   type WaterPresetItem,
 } from "@/features/nutrition/waterPresets";
+import {
+  readCachedProfileSettings,
+  saveCachedProfileSettings,
+} from "@/features/routine/profileGoalsStore";
 import { focusAndScrollToElement } from "@/lib/focusScroll";
 
 interface ChartData {
@@ -36,11 +58,7 @@ interface ChartData {
   ml: number;
 }
 
-interface TodayWaterLog {
-  id?: number;
-  amount_ml: number;
-  created_at: string;
-}
+type TodayWaterLog = CachedWaterLog;
 
 const WATER_GOALS = [2000, 2500, 3000, 3500] as const;
 
@@ -62,10 +80,16 @@ export default function WaterTrackerPage() {
   const supabase = createClient();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [totalToday, setTotalToday] = useState(0);
-  const [dailyGoal, setDailyGoal] = useState(2500);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [lastLog, setLastLog] = useState<TodayWaterLog | null>(null);
+  const [totalToday, setTotalToday] = useState(() => sumWaterLogs(readCachedWaterState().logs));
+  const [dailyGoal, setDailyGoal] = useState(
+    () => readCachedWaterState().dailyGoal ?? readCachedProfileSettings().water_goal_ml,
+  );
+  const [chartData, setChartData] = useState<ChartData[]>(() =>
+    buildHourlyWaterChartData(readCachedWaterState().logs),
+  );
+  const [lastLog, setLastLog] = useState<TodayWaterLog | null>(
+    () => readCachedWaterState().logs[0] ?? null,
+  );
   const [presets, setPresets] = useState<WaterPresetItem[]>(() => readWaterPresets());
 
   const [isEditingPresets, setIsEditingPresets] = useState(false);
@@ -77,10 +101,26 @@ export default function WaterTrackerPage() {
   const firstPresetInputRef = useRef<HTMLInputElement>(null);
   const editLastInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = useCallback(async (currentUserId: string) => {
-    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+  const applyCachedWaterToState = useCallback((logs: TodayWaterLog[], nextGoal?: number) => {
+    setTotalToday(sumWaterLogs(logs));
+    setLastLog(logs[0] ?? null);
+    setChartData(buildHourlyWaterChartData(logs));
+    if (typeof nextGoal === 'number' && nextGoal > 0) {
+      setDailyGoal(nextGoal);
+    }
+  }, []);
 
-    const [profileResponse, logsResponse] = await Promise.all([
+  const fetchData = useCallback(async (currentUserId: string) => {
+    const cached = readCachedWaterState();
+    applyCachedWaterToState(
+      cached.logs,
+      cached.dailyGoal ?? readCachedProfileSettings().water_goal_ml,
+    );
+
+    if (!navigator.onLine) return;
+
+    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+    const [profileResponse, logsResponse, pendingOutbox] = await Promise.all([
       supabase.from('profiles').select('water_goal_ml').eq('id', currentUserId).single(),
       supabase
         .from('water_logs')
@@ -89,35 +129,34 @@ export default function WaterTrackerPage() {
         .gte('created_at', startOfDay.toISOString())
         .order('created_at', { ascending: false })
         .order('id', { ascending: false }),
+      offlineDatabase.outbox.where('userId').equals(currentUserId).toArray(),
     ]);
 
+    const hasPendingGoal = pendingOutbox.some(
+      item => item.table === 'profiles' || item.table === 'profiles_water_goal',
+    );
+    const hasPendingWaterMutations = pendingOutbox.some(item =>
+      item.table === 'water_logs' ||
+      item.table === 'water_logs_update' ||
+      item.table === 'water_logs_delete' ||
+      item.table === 'water_logs_reset_day',
+    );
+
     const { data: profile } = profileResponse;
-    if (profile?.water_goal_ml) {
+    let resolvedGoal = cached.dailyGoal;
+    if (!hasPendingGoal && profile?.water_goal_ml) {
+      resolvedGoal = profile.water_goal_ml;
       setDailyGoal(profile.water_goal_ml);
+      saveCachedProfileSettings({ water_goal_ml: profile.water_goal_ml });
     }
 
     const { data: logs } = logsResponse;
-    if (logs) {
-      const total = logs.reduce((sum, log) => sum + log.amount_ml, 0);
-      setTotalToday(total);
-      setLastLog(logs[0] ?? null);
-
-      const hourlyTotals = new Map<number, number>();
-      for (const log of logs) {
-        const hour = new Date(log.created_at).getHours();
-        hourlyTotals.set(hour, (hourlyTotals.get(hour) || 0) + log.amount_ml);
-      }
-
-      const formattedData: ChartData[] = [];
-      for (let hour = 7; hour <= 23; hour++) {
-        formattedData.push({
-          time: `${hour}:00`,
-          ml: hourlyTotals.get(hour) || 0,
-        });
-      }
-      setChartData(formattedData);
+    if (!hasPendingWaterMutations && logs) {
+      const normalized = logs as TodayWaterLog[];
+      saveCachedWaterState(normalized, resolvedGoal);
+      applyCachedWaterToState(normalized);
     }
-  }, [supabase]);
+  }, [supabase, applyCachedWaterToState]);
 
   useEffect(() => {
     const initializePage = async () => {
@@ -135,70 +174,125 @@ export default function WaterTrackerPage() {
       }
     };
     void initializePage();
-  }, [router, supabase, fetchData]);
+    const handleSyncRefresh = () => {
+      const cached = readCachedWaterState();
+      applyCachedWaterToState(
+        cached.logs,
+        cached.dailyGoal ?? readCachedProfileSettings().water_goal_ml,
+      );
+    };
+    window.addEventListener('nutriflow:data-updated', handleSyncRefresh);
+    return () => window.removeEventListener('nutriflow:data-updated', handleSyncRefresh);
+  }, [router, supabase, fetchData, applyCachedWaterToState]);
 
   const handleAddWater = async (amount: number) => {
     if (!userId || amount <= 0) return;
-    setTotalToday(prev => prev + amount);
+    const nowIso = new Date().toISOString();
+    const outboxId = `water_logs:${crypto.randomUUID()}`;
+
+    const queueOfflineAdd = async (message: string) => {
+      await queueAndSync({
+        id: outboxId,
+        userId,
+        table: 'water_logs',
+        payload: {
+          user_id: userId,
+          amount_ml: amount,
+          created_at: nowIso,
+        },
+      });
+      const updated = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: nowIso });
+      applyCachedWaterToState(updated.logs);
+      toast.success(message);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+    };
 
     if (!navigator.onLine) {
       try {
-        await queueAndSync({
-          id: `water_logs:${crypto.randomUUID()}`,
-          userId,
-          table: 'water_logs',
-          payload: {
-            user_id: userId,
-            amount_ml: amount,
-            created_at: new Date().toISOString(),
-          },
-        });
-        setLastLog({ amount_ml: amount, created_at: new Date().toISOString() });
-        toast.success(`+${amount} ml salvati offline`);
-        window.dispatchEvent(new Event('nutriflow:data-updated'));
+        await queueOfflineAdd(`+${amount} ml salvati offline`);
       } catch {
-        setTotalToday(prev => Math.max(0, prev - amount));
         toast.error("Impossibile salvare l'acqua offline.");
       }
       return;
     }
 
-    const { data, error } = await supabase
-      .from('water_logs')
-      .insert([{ user_id: userId, amount_ml: amount }])
-      .select('id, amount_ml, created_at')
-      .single();
+    const optimistic = appendCachedWaterLog({ localId: outboxId, amount_ml: amount, created_at: nowIso });
+    applyCachedWaterToState(optimistic.logs);
 
-    if (error) {
-      setTotalToday(prev => Math.max(0, prev - amount));
-      toast.error("Errore nel registrare l'acqua: " + error.message);
-      return;
+    try {
+      const { data, error } = await supabase
+        .from('water_logs')
+        .insert([{ user_id: userId, amount_ml: amount }])
+        .select('id, amount_ml, created_at')
+        .single();
+
+      if (error || !data) {
+        if (!navigator.onLine) {
+          await queueOfflineAdd(`+${amount} ml salvati offline`);
+          return;
+        }
+        throw error ?? new Error('Risposta vuota');
+      }
+
+      const reconciled = saveCachedWaterState(
+        optimistic.logs.map(item => (item.localId === outboxId ? (data as TodayWaterLog) : item)),
+      );
+      applyCachedWaterToState(reconciled.logs);
+      toast.success(`+${amount} ml aggiunti`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      void fetchData(userId);
+    } catch {
+      try {
+        await queueOfflineAdd(`+${amount} ml salvati offline (in coda sync)`);
+      } catch {
+        toast.error("Errore nel registrare l'acqua.");
+      }
     }
-
-    setLastLog(data as TodayWaterLog);
-    toast.success(`+${amount} ml aggiunti`);
-    window.dispatchEvent(new Event('nutriflow:data-updated'));
-    void fetchData(userId);
   };
 
   const handleRemoveLast = async () => {
     if (!userId || !lastLog) return;
-    const removedAmount = lastLog.amount_ml;
-    setTotalToday(prev => Math.max(0, prev - removedAmount));
+    const { removed, state } = removeLastCachedWaterLog();
+    if (!removed) return;
+    applyCachedWaterToState(state.logs);
 
-    if (lastLog.id) {
+    const queueDelete = async () => {
+      if (removed.localId) {
+        await removeOutboxItem(removed.localId);
+        return;
+      }
+      if (removed.id) {
+        await queueAndSync({
+          id: `water_logs_delete:${removed.id}`,
+          userId,
+          table: 'water_logs_delete',
+          payload: { id: removed.id },
+        });
+      }
+    };
+
+    if (removed.localId || !navigator.onLine) {
+      await queueDelete();
+      toast.info(`Rimossi -${removed.amount_ml} ml (offline)`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      return;
+    }
+
+    if (removed.id) {
       const { error } = await supabase
         .from('water_logs')
         .delete()
-        .eq('id', lastLog.id)
+        .eq('id', removed.id)
         .eq('user_id', userId);
       if (error) {
-        toast.error("Impossibile togliere l'ultima azione.");
-        void fetchData(userId);
+        await queueDelete();
+        toast.info(`Rimossi -${removed.amount_ml} ml (in coda sync)`);
+        window.dispatchEvent(new Event('nutriflow:data-updated'));
         return;
       }
     }
-    toast.info(`Rimossi -${removedAmount} ml`);
+
+    toast.info(`Rimossi -${removed.amount_ml} ml`);
     window.dispatchEvent(new Event('nutriflow:data-updated'));
     void fetchData(userId);
   };
@@ -212,42 +306,75 @@ export default function WaterTrackerPage() {
 
   const handleSaveLastEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId || !lastLog?.id) return;
+    if (!userId || !lastLog || (!lastLog.id && !lastLog.localId)) return;
     const nextMl = Math.max(10, Math.min(3000, Number.parseInt(lastMlDraft, 10) || lastLog.amount_ml));
-    const diff = nextMl - lastLog.amount_ml;
-    setTotalToday(prev => Math.max(0, prev + diff));
+    const { updated, previous, state } = updateLastCachedWaterLog(nextMl);
+    if (!updated || !previous) return;
+    applyCachedWaterToState(state.logs);
+    setIsEditingLast(false);
 
+    if (updated.localId) {
+      await updatePendingWaterAmount(updated.localId, nextMl);
+      toast.success(`Ultima registrazione aggiornata a ${nextMl} ml`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      return;
+    }
+
+    const queueRemoteUpdate = async () => {
+      if (!previous.id) return;
+      await queueAndSync({
+        id: `water_logs_update:${previous.id}`,
+        userId,
+        table: 'water_logs_update',
+        payload: {
+          id: previous.id,
+          user_id: userId,
+          amount_ml: nextMl,
+          created_at: previous.created_at,
+        },
+      });
+    };
+
+    if (!navigator.onLine) {
+      await queueRemoteUpdate();
+      toast.success(`Ultima registrazione aggiornata offline a ${nextMl} ml`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      return;
+    }
+
+    const targetId = previous.id!;
     const { data: updatedRows, error: updateError } = await supabase
       .from('water_logs')
       .update({ amount_ml: nextMl })
-      .eq('id', lastLog.id)
+      .eq('id', targetId)
       .eq('user_id', userId)
       .select('id, amount_ml, created_at');
 
     if (updateError || !updatedRows || updatedRows.length === 0) {
-      // Fallback nel caso la policy RLS di water_logs consenta DELETE + INSERT ma non UPDATE
       const { error: deleteErr } = await supabase
         .from('water_logs')
         .delete()
-        .eq('id', lastLog.id)
+        .eq('id', targetId)
         .eq('user_id', userId);
       const { data: insertedRow, error: insertErr } = await supabase
         .from('water_logs')
-        .insert([{ user_id: userId, amount_ml: nextMl }])
+        .insert([{ user_id: userId, amount_ml: nextMl, created_at: previous.created_at }])
         .select('id, amount_ml, created_at')
         .single();
 
       if (deleteErr || insertErr || !insertedRow) {
-        toast.error("Impossibile modificare l'ultima azione.");
-        void fetchData(userId);
+        await queueRemoteUpdate();
+        toast.success(`Ultima registrazione salvata in coda (${nextMl} ml)`);
+        window.dispatchEvent(new Event('nutriflow:data-updated'));
         return;
       }
-      setLastLog(insertedRow as TodayWaterLog);
+      const nextState = saveCachedWaterState([insertedRow as TodayWaterLog, ...state.logs.slice(1)]);
+      applyCachedWaterToState(nextState.logs);
     } else {
-      setLastLog(updatedRows[0] as TodayWaterLog);
+      const nextState = saveCachedWaterState([updatedRows[0] as TodayWaterLog, ...state.logs.slice(1)]);
+      applyCachedWaterToState(nextState.logs);
     }
 
-    setIsEditingLast(false);
     toast.success(`Ultima registrazione aggiornata a ${nextMl} ml`);
     window.dispatchEvent(new Event('nutriflow:data-updated'));
     void fetchData(userId);
@@ -277,15 +404,37 @@ export default function WaterTrackerPage() {
 
   const handleGoalChange = async (goalMl: number) => {
     if (!userId || goalMl === dailyGoal) return;
-    const previous = dailyGoal;
     setDailyGoal(goalMl);
+    saveCachedProfileSettings({ water_goal_ml: goalMl });
+    saveCachedWaterState(readCachedWaterState().logs, goalMl);
+
+    const queueGoal = async () => {
+      await queueAndSync({
+        id: `profiles_water_goal:${userId}`,
+        userId,
+        table: 'profiles_water_goal',
+        payload: {
+          water_goal_ml: goalMl,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    };
+
+    if (!navigator.onLine) {
+      await queueGoal();
+      toast.success(`Obiettivo acqua salvato offline: ${(goalMl / 1000).toFixed(1)} L`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      return;
+    }
+
     const { error } = await supabase
       .from('profiles')
       .update({ water_goal_ml: goalMl })
       .eq('id', userId);
     if (error) {
-      setDailyGoal(previous);
-      toast.error('Impossibile aggiornare l’obiettivo acqua.');
+      await queueGoal();
+      toast.success(`Obiettivo ${(goalMl / 1000).toFixed(1)} L salvato in coda sync`);
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
       return;
     }
     toast.success(`Obiettivo acqua impostato a ${(goalMl / 1000).toFixed(1)} L`);
@@ -295,17 +444,49 @@ export default function WaterTrackerPage() {
   const handleResetWater = async () => {
     if (!userId) return;
     const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
-    const { error } = await supabase.from('water_logs').delete().eq('user_id', userId).gte('created_at', startOfDay.toISOString());
-    if (error) {
-      toast.error("Errore nel resettare i log: " + error.message);
-    } else {
-      setLastLog(null);
-      setTotalToday(0);
-      setIsEditingLast(false);
-      toast.success("Log resettati con successo.");
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+    const startIso = startOfDay.toISOString();
+    const endIso = endOfDay.toISOString();
+
+    const cleared = clearCachedWaterLogs();
+    applyCachedWaterToState(cleared.logs);
+    setIsEditingLast(false);
+    await clearPendingTodayWaterOutbox(userId, startIso, endIso);
+
+    const queueReset = async () => {
+      await queueAndSync({
+        id: `water_logs_reset_day:${getTodayWaterDateKey()}`,
+        userId,
+        table: 'water_logs_reset_day',
+        payload: { start_iso: startIso, end_iso: endIso },
+      });
+    };
+
+    if (!navigator.onLine) {
+      await queueReset();
+      toast.success("Log resettati offline (verranno sincronizzati).");
       window.dispatchEvent(new Event('nutriflow:data-updated'));
-      await fetchData(userId);
+      return;
     }
+
+    const { error } = await supabase
+      .from('water_logs')
+      .delete()
+      .eq('user_id', userId)
+      .gte('created_at', startIso)
+      .lt('created_at', endIso);
+
+    if (error) {
+      await queueReset();
+      toast.success("Log resettati in locale (in coda sync).");
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      return;
+    }
+
+    toast.success("Log resettati con successo.");
+    window.dispatchEvent(new Event('nutriflow:data-updated'));
+    await fetchData(userId);
   };
 
   const progressValue = dailyGoal > 0 ? Math.min(100, (totalToday / dailyGoal) * 100) : 0;
@@ -524,7 +705,7 @@ export default function WaterTrackerPage() {
                       <Undo2 className="mr-1.5 size-3.5" />
                       Togli ultima (-{lastLog.amount_ml} ml)
                     </Button>
-                    {lastLog.id && (
+                    {(lastLog.id || lastLog.localId) && (
                       <Button
                         variant="outline"
                         size="sm"

@@ -23,14 +23,29 @@ vi.mock('./database', () => ({
   },
 }))
 
+const createQueryChain = () => {
+  const result = { data: [], error: null }
+  const chain: Record<string, unknown> = {
+    then: (resolve: (val: unknown) => unknown) => Promise.resolve(result).then(resolve),
+    upsert: vi.fn().mockImplementation(() => chain),
+    insert: vi.fn().mockImplementation(() => chain),
+    update: vi.fn().mockImplementation(() => chain),
+    delete: vi.fn().mockImplementation(() => chain),
+    select: vi.fn().mockImplementation(() => chain),
+    eq: vi.fn().mockImplementation(() => chain),
+    in: vi.fn().mockImplementation(() => chain),
+    gte: vi.fn().mockImplementation(() => chain),
+    lt: vi.fn().mockImplementation(() => chain),
+  }
+  return chain
+}
+
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
     },
-    from: vi.fn().mockReturnValue({
-      upsert: vi.fn().mockResolvedValue({ error: null }),
-    }),
+    from: vi.fn().mockImplementation(() => createQueryChain()),
   }),
 }))
 
@@ -86,5 +101,81 @@ describe('Offline Sync Outbox', () => {
 
     await syncPendingChanges()
     expect(mockDelete).toHaveBeenCalledWith('meal_logs:m1')
+  })
+
+  it('flushes offline deletes, water resets, profile updates, and custom workout plans', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    mockSortBy.mockResolvedValueOnce([
+      {
+        id: 'meal_logs_delete:m2',
+        userId: 'user-1',
+        table: 'meal_logs_delete',
+        payload: { id: 'm2' },
+        createdAt: 1,
+        attempts: 0,
+      },
+      {
+        id: 'water_logs_reset_day:2026-11-26',
+        userId: 'user-1',
+        table: 'water_logs_reset_day',
+        payload: {
+          start_iso: '2026-11-26T00:00:00.000Z',
+          end_iso: '2026-11-27T00:00:00.000Z',
+        },
+        createdAt: 2,
+        attempts: 0,
+      },
+      {
+        id: 'profiles_water_goal:user-1',
+        userId: 'user-1',
+        table: 'profiles_water_goal',
+        payload: {
+          water_goal_ml: 3000,
+          updated_at: '2026-11-26T10:00:00.000Z',
+        },
+        createdAt: 3,
+        attempts: 0,
+      },
+      {
+        id: 'workout_plans_sync:plan-offline-1',
+        userId: 'user-1',
+        table: 'workout_plans_sync',
+        payload: {
+          plan: {
+            id: 'plan-offline-1',
+            user_id: 'user-1',
+            name: 'Push Pull Offline',
+            created_at: '2026-11-26T09:00:00.000Z',
+            workouts: [
+              {
+                id: 'wk-offline-1',
+                plan_id: 'plan-offline-1',
+                name: 'Push A',
+                muscle_group: null,
+                workout_exercises: [
+                  {
+                    id: 'ex-offline-1',
+                    workout_id: 'wk-offline-1',
+                    exercise_name: 'Panca Piana',
+                    target_sets: 4,
+                    target_reps: '8',
+                    order: 1,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        createdAt: 4,
+        attempts: 0,
+      },
+    ])
+
+    const synced = await syncPendingChanges()
+    expect(synced).toBe(4)
+    expect(mockDelete).toHaveBeenCalledWith('meal_logs_delete:m2')
+    expect(mockDelete).toHaveBeenCalledWith('water_logs_reset_day:2026-11-26')
+    expect(mockDelete).toHaveBeenCalledWith('profiles_water_goal:user-1')
+    expect(mockDelete).toHaveBeenCalledWith('workout_plans_sync:plan-offline-1')
   })
 })

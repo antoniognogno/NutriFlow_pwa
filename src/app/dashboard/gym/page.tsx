@@ -31,18 +31,37 @@ import {
   removeStandbyWorkout,
   type StandbyWorkoutEntry,
 } from "@/features/workouts/workoutStandby";
+import { offlineDatabase } from "@/features/offline/database";
+import {
+  cachePlans,
+  mergeRemoteAndCachedPlans,
+  mergeRemoteAndCachedSessions,
+  readCachedPlans,
+  readCachedSessions,
+} from "@/features/workouts/workoutOfflineCache";
+import type { EditableSession } from "@/features/workouts/SessionEditor";
 import { isCardioSession } from "@/features/workouts/workoutUtils";
 import { moveToTrash, readTrashItems } from "@/features/trash/trashStore";
 
 type GymTab = 'allenamento' | 'corsa';
+
+function countSessions(list: Array<{ workout_id: string | null; workout_name: string }>) {
+  let cardio = 0;
+  let workouts = 0;
+  for (const item of list) {
+    if (isCardioSession(item)) cardio += 1;
+    else workouts += 1;
+  }
+  return { cardio, workouts };
+}
 
 export default function GymPage() {
   const router = useRouter();
   const supabase = createClient();
 
   const [tab, setTab] = useState<GymTab>('allenamento');
-  const [plans, setPlans] = useState<PlanWithWorkoutsAndExercises[]>([]);
-  const [counts, setCounts] = useState({ cardio: 0, workouts: 0 });
+  const [plans, setPlans] = useState<PlanWithWorkoutsAndExercises[]>(() => readCachedPlans());
+  const [counts, setCounts] = useState(() => countSessions(readCachedSessions()));
   const [workoutPresets, setWorkoutPresets] = useState<DefaultWorkout[]>(() => readWorkoutPresets());
   const [standbyWorkouts, setStandbyWorkouts] = useState<StandbyWorkoutEntry[]>(() => readStandbyWorkouts());
   const [trashCount, setTrashCount] = useState<number>(() => readTrashItems().length);
@@ -53,12 +72,16 @@ export default function GymPage() {
   const [presetExercises, setPresetExercises] = useState('');
   const presetNameInputRef = useRef<HTMLInputElement>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => readCachedPlans().length === 0);
 
   const syncLocalLists = useCallback(() => {
     setWorkoutPresets(readWorkoutPresets());
     setStandbyWorkouts(readStandbyWorkouts());
     setTrashCount(readTrashItems().length);
+    if (!navigator.onLine) {
+      setPlans(readCachedPlans());
+      setCounts(countSessions(readCachedSessions()));
+    }
   }, []);
 
   const handleDiscardStandby = async (entry: StandbyWorkoutEntry) => {
@@ -82,12 +105,32 @@ export default function GymPage() {
   };
 
   const fetchGymData = useCallback(async () => {
-    setIsLoading(true);
+    const cachedPlans = readCachedPlans();
+    if (cachedPlans.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       if (!user) {
         router.push('/login');
+        return;
+      }
+
+      const pendingOutbox = await offlineDatabase.outbox
+        .where('userId')
+        .equals(user.id)
+        .toArray();
+      const pendingSessionIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_sessions')
+          .map(item => (item.payload as { id?: string }).id ?? '')
+          .filter(Boolean),
+      );
+
+      if (!navigator.onLine) {
+        setPlans(cachedPlans);
+        setCounts(countSessions(readCachedSessions()));
         return;
       }
 
@@ -99,24 +142,43 @@ export default function GymPage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('workout_sessions')
-          .select('workout_id, workout_name')
+          .select('id, user_id, workout_id, workout_name, started_at, ended_at, duration_seconds')
           .eq('user_id', user.id),
       ]);
 
+      const pendingSyncPlanIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_plans_sync')
+          .map(item => item.payload.plan.id),
+      );
+      const pendingDeletePlanIds = new Set(
+        pendingOutbox
+          .filter(item => item.table === 'workout_plans_delete')
+          .map(item => item.payload.plan_id),
+      );
+
       if (!plansRes.error && plansRes.data) {
-        setPlans(plansRes.data);
+        const loadedPlans = mergeRemoteAndCachedPlans(
+          plansRes.data as PlanWithWorkoutsAndExercises[],
+          readCachedPlans(),
+          pendingSyncPlanIds,
+          pendingDeletePlanIds,
+        );
+        setPlans(loadedPlans);
+        cachePlans(loadedPlans);
       }
       if (!sessionsRes.error && sessionsRes.data) {
-        let cardio = 0;
-        let workouts = 0;
-        for (const item of sessionsRes.data) {
-          if (isCardioSession(item)) cardio += 1;
-          else workouts += 1;
-        }
-        setCounts({ cardio, workouts });
+        const merged = mergeRemoteAndCachedSessions(
+          sessionsRes.data as EditableSession[],
+          readCachedSessions(),
+          pendingSessionIds,
+        );
+        setCounts(countSessions(merged));
       }
     } catch (error) {
       console.error("Errore caricamento palestra:", error);
+      setPlans(readCachedPlans());
+      setCounts(countSessions(readCachedSessions()));
     } finally {
       setIsLoading(false);
     }
