@@ -1,184 +1,73 @@
 import { markCloudStateDirty } from '@/features/offline/cloudStateSync'
 
-export type HairStyle = 'short' | 'wavy' | 'long' | 'bun' | 'bald'
-export type HairColor = 'blonde' | 'brown' | 'black' | 'red' | 'gray'
-export type BeardStyle = 'none' | 'short' | 'full'
-export type EyeColor = 'brown' | 'blue' | 'green' | 'hazel' | 'gray'
-export type SkinTone = 'fair' | 'light' | 'medium' | 'tan'
-export type BgAccent = 'sky' | 'emerald' | 'amber' | 'slate'
-export type BoringAvatarVariant = 'beam' | 'marble' | 'sunset' | 'bauhaus' | 'ring' | 'pixel'
-export type AvatarRenderMode = 'portrait' | 'boring'
+export type AvatarColorId =
+  | 'sky'
+  | 'emerald'
+  | 'cyan'
+  | 'amber'
+  | 'violet'
+  | 'rose'
+  | 'indigo'
+  | 'slate'
+
+export type BgAccent = AvatarColorId
 
 export interface ProfileAvatarConfig {
-  presetId: string | null
-  renderMode?: AvatarRenderMode
-  boringVariant?: BoringAvatarVariant
-  boringSeed?: string
-  hairStyle: HairStyle
-  hairColor: HairColor
-  beard: BeardStyle
-  eyeColor: EyeColor
-  skinTone: SkinTone
-  bgAccent: BgAccent
+  bgAccent: AvatarColorId
 }
 
-export const BORING_PALETTES: Record<BgAccent, string[]> = {
-  sky: ['#0f2738', '#267491', '#7aa6bd', '#34d399', '#e2e8f0'],
-  emerald: ['#0c2a24', '#059669', '#34d399', '#7aa6bd', '#f8fafc'],
-  amber: ['#2c1f0e', '#d97706', '#f59e0b', '#fbbf24', '#fef3c7'],
-  slate: ['#16202c', '#475569', '#91a2ae', '#7aa6bd', '#e2e8f0'],
-}
-
-export interface AvatarPreset {
-  id: string
+export interface AvatarColorOption {
+  id: AvatarColorId
   label: string
-  config: ProfileAvatarConfig
+  bg: string
+  ring: string
+  icon: string
 }
+
+export const AVATAR_COLOR_OPTIONS: AvatarColorOption[] = [
+  { id: 'sky', label: 'Oceano', bg: '#0f2738', ring: '#7aa6bd', icon: '#9cc5da' },
+  { id: 'emerald', label: 'Smeraldo', bg: '#0c2a24', ring: '#34d399', icon: '#6ee7b7' },
+  { id: 'cyan', label: 'Ciano', bg: '#0c2536', ring: '#38bdf8', icon: '#7dd3fc' },
+  { id: 'amber', label: 'Ambra', bg: '#2c1f0e', ring: '#f59e0b', icon: '#fcd34d' },
+  { id: 'violet', label: 'Viola', bg: '#21193b', ring: '#a78bfa', icon: '#c4b5fd' },
+  { id: 'rose', label: 'Corallo', bg: '#33151e', ring: '#fb7185', icon: '#fda4af' },
+  { id: 'indigo', label: 'Indaco', bg: '#171c3a', ring: '#818cf8', icon: '#a5b4fc' },
+  { id: 'slate', label: 'Grafite', bg: '#16202c', ring: '#91a2ae', icon: '#cbd5e1' },
+]
 
 export const AVATAR_STORAGE_KEY = 'nutriflow:avatar-v1'
 
 export const DEFAULT_AVATAR_CONFIG: ProfileAvatarConfig = {
-  presetId: 'man-brown-beard',
-  hairStyle: 'short',
-  hairColor: 'brown',
-  beard: 'short',
-  eyeColor: 'brown',
-  skinTone: 'light',
   bgAccent: 'sky',
 }
 
-export const AVATAR_PRESETS: AvatarPreset[] = [
-  {
-    id: 'man-brown-beard',
-    label: 'Uomo castano + barba',
-    config: {
-      presetId: 'man-brown-beard',
-      hairStyle: 'short',
-      hairColor: 'brown',
-      beard: 'full',
-      eyeColor: 'brown',
-      skinTone: 'light',
-      bgAccent: 'sky',
-    },
-  },
-  {
-    id: 'man-blonde-clean',
-    label: 'Uomo biondo',
-    config: {
-      presetId: 'man-blonde-clean',
-      hairStyle: 'wavy',
-      hairColor: 'blonde',
-      beard: 'none',
-      eyeColor: 'blue',
-      skinTone: 'fair',
-      bgAccent: 'emerald',
-    },
-  },
-  {
-    id: 'man-black-beard',
-    label: 'Uomo moro + barba',
-    config: {
-      presetId: 'man-black-beard',
-      hairStyle: 'short',
-      hairColor: 'black',
-      beard: 'short',
-      eyeColor: 'hazel',
-      skinTone: 'medium',
-      bgAccent: 'slate',
-    },
-  },
-  {
-    id: 'woman-blonde',
-    label: 'Donna bionda',
-    config: {
-      presetId: 'woman-blonde',
-      hairStyle: 'long',
-      hairColor: 'blonde',
-      beard: 'none',
-      eyeColor: 'blue',
-      skinTone: 'fair',
-      bgAccent: 'amber',
-    },
-  },
-  {
-    id: 'woman-brunette',
-    label: 'Donna mora',
-    config: {
-      presetId: 'woman-brunette',
-      hairStyle: 'long',
-      hairColor: 'black',
-      beard: 'none',
-      eyeColor: 'green',
-      skinTone: 'light',
-      bgAccent: 'emerald',
-    },
-  },
-  {
-    id: 'woman-brown-bun',
-    label: 'Donna castana',
-    config: {
-      presetId: 'woman-brown-bun',
-      hairStyle: 'bun',
-      hairColor: 'brown',
-      beard: 'none',
-      eyeColor: 'brown',
-      skinTone: 'medium',
-      bgAccent: 'sky',
-    },
-  },
-  {
-    id: 'woman-red-hazel',
-    label: 'Donna rossa',
-    config: {
-      presetId: 'woman-red-hazel',
-      hairStyle: 'wavy',
-      hairColor: 'red',
-      beard: 'none',
-      eyeColor: 'green',
-      skinTone: 'fair',
-      bgAccent: 'amber',
-    },
-  },
-  {
-    id: 'man-bald-beard',
-    label: 'Rasato + barba',
-    config: {
-      presetId: 'man-bald-beard',
-      hairStyle: 'bald',
-      hairColor: 'black',
-      beard: 'full',
-      eyeColor: 'gray',
-      skinTone: 'tan',
-      bgAccent: 'slate',
-    },
-  },
-]
+const VALID_COLORS = new Set<AvatarColorId>(AVATAR_COLOR_OPTIONS.map(c => c.id))
+
+export function getAvatarPalette(colorId?: AvatarColorId): AvatarColorOption {
+  return AVATAR_COLOR_OPTIONS.find(c => c.id === colorId) ?? AVATAR_COLOR_OPTIONS[0]
+}
 
 export function readProfileAvatar(): ProfileAvatarConfig {
   try {
     const raw = localStorage.getItem(AVATAR_STORAGE_KEY)
     if (!raw) return DEFAULT_AVATAR_CONFIG
-    const parsed = JSON.parse(raw) as Partial<ProfileAvatarConfig>
-    return {
-      presetId: typeof parsed.presetId === 'string' || parsed.presetId === null ? parsed.presetId : null,
-      renderMode: parsed.renderMode === 'boring' ? 'boring' : 'portrait',
-      boringVariant: parsed.boringVariant ?? 'beam',
-      boringSeed: typeof parsed.boringSeed === 'string' && parsed.boringSeed.trim() ? parsed.boringSeed.slice(0, 40) : 'NutriFlow',
-      hairStyle: parsed.hairStyle ?? DEFAULT_AVATAR_CONFIG.hairStyle,
-      hairColor: parsed.hairColor ?? DEFAULT_AVATAR_CONFIG.hairColor,
-      beard: parsed.beard ?? DEFAULT_AVATAR_CONFIG.beard,
-      eyeColor: parsed.eyeColor ?? DEFAULT_AVATAR_CONFIG.eyeColor,
-      skinTone: parsed.skinTone ?? DEFAULT_AVATAR_CONFIG.skinTone,
-      bgAccent: parsed.bgAccent ?? DEFAULT_AVATAR_CONFIG.bgAccent,
-    }
+    const parsed = JSON.parse(raw) as { bgAccent?: unknown }
+    const bgAccent =
+      typeof parsed.bgAccent === 'string' && VALID_COLORS.has(parsed.bgAccent as AvatarColorId)
+        ? (parsed.bgAccent as AvatarColorId)
+        : DEFAULT_AVATAR_CONFIG.bgAccent
+    return { bgAccent }
   } catch {
     return DEFAULT_AVATAR_CONFIG
   }
 }
 
 export function saveProfileAvatar(config: ProfileAvatarConfig): ProfileAvatarConfig {
+  const normalized: ProfileAvatarConfig = {
+    bgAccent: VALID_COLORS.has(config.bgAccent) ? config.bgAccent : DEFAULT_AVATAR_CONFIG.bgAccent,
+  }
   try {
-    localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(config))
+    localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(normalized))
     markCloudStateDirty()
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('nutriflow:avatar-updated'))
@@ -186,5 +75,5 @@ export function saveProfileAvatar(config: ProfileAvatarConfig): ProfileAvatarCon
   } catch {
     // Ignore storage quota issues
   }
-  return config
+  return normalized
 }
