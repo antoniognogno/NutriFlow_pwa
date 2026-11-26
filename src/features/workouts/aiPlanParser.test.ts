@@ -1,13 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildGeminiCustomPrompt,
+  GEMINI_APPEND_FORMAT_PROMPT,
   GEMINI_EXAMPLE_OUTPUT,
-  GEMINI_PROMPT_TEMPLATE,
   parseAiWorkoutPlan,
 } from './aiPlanParser'
 
 describe('Gemini AI Workout Plan Parser', () => {
-  it('ships an actionable Gemini prompt template and example', () => {
-    expect(GEMINI_PROMPT_TEMPLATE).toContain('# Upper / Lower Personalizzata')
+  it('builds a custom Gemini prompt with goal, days, machines and excluded exercises', () => {
+    const full = buildGeminiCustomPrompt({
+      goal: 'Ipertrofia',
+      daysPerWeek: 5,
+      level: 'Intermedio',
+      sessionMinutes: 60,
+      equipment: ['Manubri', 'Cavi'],
+      customEquipment: 'Leg Press',
+      excludedExercises: 'Stacchi da terra',
+    })
+    expect(full).toContain('Ipertrofia')
+    expect(full).toContain('5 allenamenti a settimana')
+    expect(full).toContain('Manubri, Cavi, Leg Press')
+    expect(full).toContain('ESCLUDI ASSOLUTAMENTE questi esercizi')
+    expect(full).toContain('Stacchi da terra')
+    expect(GEMINI_APPEND_FORMAT_PROMPT).toContain('# Nome della Scheda')
     expect(GEMINI_EXAMPLE_OUTPUT).toContain('## Giorno:')
   })
 

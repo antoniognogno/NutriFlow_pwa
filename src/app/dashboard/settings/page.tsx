@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { siteConfig } from '@/config/attributes'
 import { createClient } from '@/lib/supabase/client'
 import { offlineDatabase } from '@/features/offline/database'
@@ -58,6 +59,17 @@ import { getWeeklyWorkoutGoal, saveWeeklyWorkoutGoal } from '@/app/components/da
 
 const WATER_GOAL_OPTIONS = [2000, 2500, 3000, 3500] as const
 const WORKOUT_GOAL_OPTIONS = [3, 4, 5, 6] as const
+const DIET_STYLE_OPTIONS = [
+  { value: 'none', label: 'Non specificato' },
+  { value: 'omnivore', label: 'Onnivoro / Bilanciata' },
+  { value: 'Iperproteica', label: 'Iperproteica (Fitness)' },
+  { value: 'Mediterranea', label: 'Mediterranea' },
+  { value: 'Vegetariana', label: 'Vegetariana' },
+  { value: 'Vegana', label: 'Vegana' },
+  { value: 'Chetogenica / Low Carb', label: 'Chetogenica / Low Carb' },
+  { value: 'Senza glutine', label: 'Senza glutine' },
+  { value: 'Senza lattosio', label: 'Senza lattosio' },
+] as const
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -664,14 +676,32 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="settings-diet">Stile alimentare (opzionale)</Label>
-              <Input
-                id="settings-diet"
-                value={dietType}
-                onChange={e => setDietType(e.target.value)}
-                placeholder="Es. Bilanciata, Iperproteica..."
-                className="h-11"
-              />
+              <Label htmlFor="settings-diet">Stile alimentare</Label>
+              <Select
+                value={
+                  dietType && DIET_STYLE_OPTIONS.some(opt => opt.value === dietType)
+                    ? dietType
+                    : dietType.trim()
+                      ? dietType
+                      : 'none'
+                }
+                onValueChange={val => setDietType(val === 'none' ? '' : val)}
+              >
+                <SelectTrigger id="settings-diet" className="h-11 w-full">
+                  <SelectValue placeholder="Seleziona stile alimentare" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DIET_STYLE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                  {dietType.trim() &&
+                    !DIET_STYLE_OPTIONS.some(opt => opt.value === dietType) && (
+                      <SelectItem value={dietType}>{dietType}</SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

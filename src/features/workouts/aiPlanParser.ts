@@ -22,22 +22,52 @@ export const GEMINI_FORMAT_GUIDE = `# Nome Scheda
 ## Giorno: Nome del Giorno
 - Nome Esercizio | 4x8-10 | Rec: 120s | RIR 2 | SS: A | Nota: opzionale`
 
-export const GEMINI_PROMPT_TEMPLATE = `Agisci come un personal trainer esperto. Crea una scheda di allenamento per:
-- Obiettivo: [ipertrofia / forza / dimagrimento]
-- Giorni a settimana: [3 o 4]
-- Livello: [principiante / intermedio]
-- Attrezzatura: [palestra completa / manubri a casa]
+export const GEMINI_APPEND_FORMAT_PROMPT = `IMPORTANTE: Alla fine della tua risposta formatta TUTTA la scheda ESATTAMENTE con questa sintassi (una riga per esercizio; Rec, RIR, SS e Nota sono opzionali; usa lo stesso codice SS su due esercizi consecutivi per le superserie):
 
-IMPORTANTE: Alla fine della tua risposta formatta la scheda ESATTAMENTE così, usando una riga per esercizio (Rec, RIR, SS e Nota sono opzionali; usa lo stesso valore SS su due esercizi consecutivi per collegarli in superserie):
+# Nome della Scheda
+## Giorno: Giorno 1 - Nome
+- Nome Esercizio | 4x8-10 | Rec: 120s | RIR 2 | Nota: opzionale
+- Esercizio A | 3x12 | Rec: 60s | SS: A
+- Esercizio B | 3x12 | Rec: 60s | SS: A`
 
-# Upper / Lower Personalizzata
-## Giorno: Giorno 1 - Spinta
-- Panca Piana con Bilanciere | 4x6-8 | Rec: 150s | RIR 2 | Nota: Fermo 1s al petto
-- Croci ai Cavi | 3x12 | Rec: 75s | RIR 1 | SS: A
-- Alzate Laterali Manubri | 3x12-15 | Rec: 75s | RIR 1 | SS: A
-## Giorno: Giorno 2 - Tirata & Gambe
-- Lat Machine Avanti | 4x8-10 | Rec: 120s | RIR 2
-- Squat con Bilanciere | 4x6 | Rec: 180s | RIR 2`
+export interface GeminiPromptBuilderOptions {
+  goal: string
+  daysPerWeek: number
+  level: string
+  sessionMinutes: number
+  equipment: string[]
+  customEquipment?: string
+  excludedExercises?: string
+}
+
+export function buildGeminiCustomPrompt(options: GeminiPromptBuilderOptions): string {
+  const equipmentList = [...options.equipment]
+  if (options.customEquipment?.trim()) {
+    equipmentList.push(options.customEquipment.trim())
+  }
+  const equipmentText =
+    equipmentList.length > 0 ? equipmentList.join(', ') : 'Palestra completa'
+  const excludedText = options.excludedExercises?.trim()
+    ? `\n- ESCLUDI ASSOLUTAMENTE questi esercizi (non inserirli nemmeno come variante): ${options.excludedExercises.trim()}`
+    : ''
+
+  return `Agisci come un personal trainer esperto. Crea una scheda di allenamento personalizzata con questi parametri:
+- Obiettivo principale: ${options.goal}
+- Frequenza: ${options.daysPerWeek} allenamenti a settimana
+- Livello: ${options.level}
+- Durata indicativa sessione: ~${options.sessionMinutes} minuti
+- Attrezzatura / macchine disponibili: ${equipmentText}${excludedText}
+
+${GEMINI_APPEND_FORMAT_PROMPT}`
+}
+
+export const GEMINI_PROMPT_TEMPLATE = buildGeminiCustomPrompt({
+  goal: 'Ipertrofia / Massa muscolare',
+  daysPerWeek: 4,
+  level: 'Intermedio',
+  sessionMinutes: 60,
+  equipment: ['Bilanciere', 'Manubri', 'Cavi', 'Macchine guidate'],
+})
 
 export const GEMINI_EXAMPLE_OUTPUT = `# Scheda Spinta / Tirata / Gambe
 ## Giorno: Spinta (Petto, Spalle, Tricipiti)

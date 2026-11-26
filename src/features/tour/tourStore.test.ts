@@ -9,10 +9,11 @@ import {
 
 describe('App Guided Tour & 30-day inactivity trigger', () => {
   it('ships complete tour steps covering navigation, workout, stats, routine, nutrition, water, and settings', () => {
-    expect(TOUR_STEPS.length).toBe(9)
+    expect(TOUR_STEPS.length).toBe(10)
     const routes = TOUR_STEPS.map(s => s.route)
     expect(routes).toContain('/dashboard')
     expect(routes).toContain('/dashboard/gym')
+    expect(routes).toContain('/dashboard/gym/plan/new?import=ai')
     expect(routes).toContain('/dashboard/stats')
     expect(routes).toContain('/dashboard/routine')
     expect(routes).toContain('/dashboard/nutrition')

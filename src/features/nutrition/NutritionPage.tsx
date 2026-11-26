@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { offlineDatabase } from '@/features/offline/database'
-import { queueAndSync, removeOutboxItem } from '@/features/offline/useOfflineSync'
+import { queueAndSync, removeOutboxItem, useOfflineSync } from '@/features/offline/useOfflineSync'
 import { NutritionHistoryReportCard } from '@/features/reports/NutritionHistoryReportCard'
 import { validateSafeUserText } from '@/lib/authSecurity'
 import {
@@ -54,6 +54,7 @@ import {
 
 export function NutritionView() {
   const supabase = createClient()
+  const { isOnline } = useOfflineSync()
   const [userId, setUserId] = useState<string | null>(null)
   const [meals, setMeals] = useState<MealLog[]>(() => readCachedMeals())
   const [isLoading, setIsLoading] = useState(() => readCachedMeals().length === 0)
@@ -242,7 +243,7 @@ export function NutritionView() {
 
   useEffect(() => {
     const clean = foodQuery.trim()
-    if (clean.length < 2) {
+    if (!isOnline || clean.length < 2) {
       setFoodResults([])
       setFoodSearchError(null)
       setIsSearchingFood(false)
@@ -252,10 +253,6 @@ export function NutritionView() {
     const localNow = searchLocalFoods(clean)
     setFoodResults(localNow)
     setFoodSearchError(null)
-
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return
-    }
 
     const controller = new AbortController()
     const timer = window.setTimeout(async () => {
@@ -281,23 +278,18 @@ export function NutritionView() {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [foodQuery, mergeFoodSuggestions])
+  }, [foodQuery, isOnline, mergeFoodSuggestions])
 
   const handleSearchOpenFood = async () => {
+    if (!isOnline) {
+      toast.error('Ricerca OpenFoodFacts non disponibile offline.')
+      return
+    }
     const clean = foodQuery.trim()
     if (clean.length < 2 || isSearchingFood) return
     const localNow = searchLocalFoods(clean)
     setFoodResults(localNow)
     setFoodSearchError(null)
-
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      toast.info(
-        localNow.length > 0
-          ? 'Sei offline: mostrati gli alimenti del catalogo locale.'
-          : 'Sei offline e l’alimento non è nel catalogo locale.',
-      )
-      return
-    }
 
     setIsSearchingFood(true)
     try {
@@ -575,12 +567,17 @@ export function NutritionView() {
               <div className="grid grid-cols-[minmax(0,1fr)_5.75rem_auto] items-end gap-1.5">
                 <div className="min-w-0 space-y-1">
                   <Label htmlFor="food-search-input" className="text-[11px] font-semibold text-muted-foreground">
-                    Alimento (autocomplete live)
+                    Alimento EU / OpenFoodFacts
                   </Label>
                   <Input
                     id="food-search-input"
                     aria-label="Cerca alimento su OpenFoodFacts"
-                    placeholder="Es. Yogurt, Avena, Pollo..."
+                    disabled={!isOnline}
+                    placeholder={
+                      isOnline
+                        ? 'Es. Yogurt, Avena, Pollo...'
+                        : 'Non disponibile offline'
+                    }
                     value={foodQuery}
                     onChange={e => setFoodQuery(e.target.value)}
                     onKeyDown={e => {
@@ -603,6 +600,7 @@ export function NutritionView() {
                       type="number"
                       inputMode="numeric"
                       min="1"
+                      disabled={!isOnline}
                       value={foodGrams}
                       onChange={e => setFoodGrams(e.target.value)}
                       placeholder="100"
@@ -617,7 +615,7 @@ export function NutritionView() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={isSearchingFood || foodQuery.trim().length < 2}
+                  disabled={!isOnline || isSearchingFood || foodQuery.trim().length < 2}
                   className="h-9 shrink-0 rounded-xl px-2.5 text-xs"
                   aria-label="Cerca su OpenFoodFacts"
                   onClick={() => void handleSearchOpenFood()}
@@ -628,17 +626,19 @@ export function NutritionView() {
 
               <div className="flex flex-wrap items-center justify-between gap-1 text-[10.5px] text-muted-foreground">
                 <span>
-                  {isSearchingFood
-                    ? 'Ricerca OpenFoodFacts in corso...'
-                    : `I suggerimenti calcolano i macro per ${Math.max(1, Number.parseFloat(foodGrams || '100') || 100)} g`}
+                  {!isOnline
+                    ? 'Ricerca alimenti disabilitata offline: compila manualmente o usa i preset.'
+                    : isSearchingFood
+                      ? 'Ricerca alimenti comuni + OpenFoodFacts IT...'
+                      : `Suggerimenti scalati su ${Math.max(1, Number.parseFloat(foodGrams || '100') || 100)} g`}
                 </span>
-                {foodQuery.trim().length < 2 && (
+                {isOnline && foodQuery.trim().length < 2 && (
                   <button
                     type="button"
                     className="font-medium text-primary hover:underline"
-                    onClick={() => setFoodResults(LOCAL_COMMON_FOODS.slice(0, 5))}
+                    onClick={() => setFoodResults(LOCAL_COMMON_FOODS.slice(0, 6))}
                   >
-                    Alimenti rapidi
+                    Alimenti comuni EU
                   </button>
                 )}
               </div>

@@ -166,7 +166,12 @@ export function AppTourOverlay() {
   useEffect(() => {
     if (!isOpen) return
 
-    if (location.pathname !== currentStep.route) {
+    const expectedHasQuery = currentStep.route.includes('?')
+    const currentLocation = expectedHasQuery
+      ? `${location.pathname}${location.search}`
+      : location.pathname
+
+    if (currentLocation !== currentStep.route) {
       setTargetRect(null)
       releaseBodyScrollLock(false)
       lockedScrollYRef.current = 0

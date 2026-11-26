@@ -7,11 +7,14 @@ import {
   ArrowUp,
   BookOpen,
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardPaste,
   Clock3,
   Copy,
   Link2,
   PlusCircle,
+  SlidersHorizontal,
   Trash2,
   Unlink2,
 } from 'lucide-react'
@@ -22,9 +25,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  buildGeminiCustomPrompt,
+  GEMINI_APPEND_FORMAT_PROMPT,
   GEMINI_EXAMPLE_OUTPUT,
   GEMINI_FORMAT_GUIDE,
-  GEMINI_PROMPT_TEMPLATE,
   parseAiWorkoutPlan,
 } from '@/features/workouts/aiPlanParser'
 import { ExerciseNameField } from '@/features/workouts/ExerciseNameField'
@@ -35,6 +39,26 @@ import { queueAndSync } from '@/features/offline/useOfflineSync'
 import { createClient } from '@/lib/supabase/client'
 import { validateSafeUserText } from '@/lib/authSecurity'
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types'
+
+const AI_GOALS = [
+  'Ipertrofia / Massa muscolare',
+  'Dimagrimento / Definizione',
+  'Forza massima',
+  'Ricondizionamento / Salute',
+  'Atletico / Resistenza',
+] as const
+
+const AI_LEVELS = ['Principiante', 'Intermedio', 'Avanzato'] as const
+
+const AI_EQUIPMENT_OPTIONS = [
+  'Bilanciere',
+  'Manubri',
+  'Cavi',
+  'Macchine guidate',
+  'Leg Press / Hack',
+  'Corpo libero / Sbarra',
+  'Kettlebell',
+] as const
 
 interface ExerciseForm {
   id?: string
@@ -97,18 +121,57 @@ export default function PlanBuilderPage() {
   const [workouts, setWorkouts] = useState<WorkoutForm[]>(() => DEFAULT_CREATE_WORKOUTS)
   const [originalWorkoutIds, setOriginalWorkoutIds] = useState<string[]>([])
   const [showAiImport, setShowAiImport] = useState(() => !isEditMode && searchParams.get('import') === 'ai')
-  const [showAiGuide, setShowAiGuide] = useState(false)
+  const [aiPromptSection, setAiPromptSection] = useState<'existing' | 'full'>('full')
+  const [aiGoal, setAiGoal] = useState<string>(AI_GOALS[0])
+  const [aiDaysPerWeek, setAiDaysPerWeek] = useState<number>(4)
+  const [aiShowAdvanced, setAiShowAdvanced] = useState(false)
+  const [aiLevel, setAiLevel] = useState<string>(AI_LEVELS[1])
+  const [aiSessionMinutes, setAiSessionMinutes] = useState<number>(60)
+  const [aiEquipment, setAiEquipment] = useState<string[]>(['Bilanciere', 'Manubri', 'Cavi', 'Macchine guidate'])
+  const [aiCustomEquipment, setAiCustomEquipment] = useState('')
+  const [aiExcludedExercises, setAiExcludedExercises] = useState('')
   const [aiRawText, setAiRawText] = useState('')
   const [isLoading, setIsLoading] = useState(isEditMode)
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleCopyGeminiPrompt = async () => {
+  useEffect(() => {
+    if (!isEditMode && searchParams.get('import') === 'ai') {
+      setShowAiImport(true)
+    }
+  }, [isEditMode, searchParams])
+
+  const generatedFullPrompt = buildGeminiCustomPrompt({
+    goal: aiGoal,
+    daysPerWeek: aiDaysPerWeek,
+    level: aiLevel,
+    sessionMinutes: aiSessionMinutes,
+    equipment: aiEquipment,
+    customEquipment: aiCustomEquipment,
+    excludedExercises: aiExcludedExercises,
+  })
+
+  const toggleAiEquipment = (item: string) => {
+    setAiEquipment(prev =>
+      prev.includes(item) ? prev.filter(x => x !== item) : [...prev, item],
+    )
+  }
+
+  const handleCopyPromptText = async (text: string, label: string) => {
+    const customCheck = validateSafeUserText(aiCustomEquipment, 'Attrezzatura', 80)
+    const excludedCheck = validateSafeUserText(aiExcludedExercises, 'Esercizi esclusi', 120)
+    if (!customCheck.ok) {
+      toast.error(customCheck.error)
+      return
+    }
+    if (!excludedCheck.ok) {
+      toast.error(excludedCheck.error)
+      return
+    }
     try {
-      await navigator.clipboard.writeText(GEMINI_PROMPT_TEMPLATE)
-      toast.success('Prompt base per Gemini copiato negli appunti!')
+      await navigator.clipboard.writeText(text)
+      toast.success(`${label} copiato negli appunti!`)
     } catch {
-      toast.info('Seleziona e copia il prompt dalla guida qui sotto.')
-      setShowAiGuide(true)
+      toast.info('Seleziona e copia il testo mostrato qui sotto.')
     }
   }
 
@@ -535,85 +598,256 @@ export default function PlanBuilderPage() {
       </header>
 
       {showAiImport && (
-        <Card className="nf-pop-enter border-primary/35 bg-card dark:bg-[#0d1722]">
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ClipboardPaste className="size-4 text-primary" />
-                  Aggiunta rapida da Gemini
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Chiedi la scheda a Gemini, incolla qui il testo generato e compiliamo tutto in 1 tap.
-                </CardDescription>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAiGuide(curr => !curr)}
-                className="h-8 rounded-lg px-2.5 text-xs text-primary"
-              >
-                <BookOpen className="mr-1 size-3.5" />
-                {showAiGuide ? 'Nascondi guida' : 'Guida & Prompt base'}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void handleCopyGeminiPrompt()}
-                className="h-9 rounded-xl border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-              >
-                <Copy className="mr-1.5 size-3.5" />
-                Copia prompt base per Gemini
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setAiRawText(GEMINI_EXAMPLE_OUTPUT)}
-                className="h-9 rounded-xl text-xs"
-              >
-                Carica testo di esempio
-              </Button>
+        <Card data-tour="ai-import-card" className="nf-pop-enter border-primary/35 bg-card dark:bg-[#0d1722]">
+          <CardHeader className="space-y-3 pb-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardPaste className="size-4 text-primary" />
+                Aggiunta rapida da Gemini
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Scegli se hai già una chat Gemini aperta oppure genera un prompt guidato completo.
+              </CardDescription>
             </div>
 
-            {showAiGuide && (
-              <div className="nf-pop-enter space-y-2 rounded-xl border border-border/60 bg-muted/40 p-3 text-xs dark:bg-[#111f2c]">
-                <p className="font-semibold text-foreground">
-                  Come fare su Gemini in 3 passi:
+            <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-border/60 bg-muted/40 p-1">
+              <button
+                type="button"
+                onClick={() => setAiPromptSection('full')}
+                className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${
+                  aiPromptSection === 'full'
+                    ? 'bg-background text-primary shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Prompt completo
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiPromptSection('existing')}
+                className={`rounded-lg px-2.5 py-2 text-xs font-semibold transition-colors ${
+                  aiPromptSection === 'existing'
+                    ? 'bg-background text-primary shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Ho già il prompt
+              </button>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-3.5">
+            {aiPromptSection === 'existing' ? (
+              <div className="space-y-2.5 rounded-xl border border-border/60 bg-muted/35 p-3 dark:bg-[#111f2c]">
+                <p className="text-xs text-muted-foreground">
+                  Hai già chiesto a Gemini la tua scheda? Copia questa istruzione finale e incollala nella tua chat:
                 </p>
-                <ol className="list-inside list-decimal space-y-1 text-muted-foreground">
-                  <li>Premi &quot;Copia prompt base per Gemini&quot; e incollalo nella chat di Gemini compilando obiettivo e giorni.</li>
-                  <li>Alla fine di un tuo prompt esistente puoi anche aggiungere semplicemente questo formato:</li>
-                </ol>
-                <pre className="overflow-x-auto rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[11px] text-foreground">
-                  {GEMINI_FORMAT_GUIDE}
+                <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[11px] text-foreground">
+                  {GEMINI_APPEND_FORMAT_PROMPT}
                 </pre>
-                <p className="text-[11px] text-muted-foreground">
-                  3. Copia la scheda generata da Gemini, incollala qui sotto e premi &quot;Importa nella scheda&quot;.
-                </p>
-                <details className="pt-1">
-                  <summary className="cursor-pointer font-medium text-primary">
-                    Vedi testo completo del prompt base
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleCopyPromptText(GEMINI_APPEND_FORMAT_PROMPT, 'Regola formato')}
+                  className="h-9 w-full rounded-xl border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                >
+                  <Copy className="mr-1.5 size-3.5" />
+                  Copia solo regola formato
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-xl border border-border/60 bg-muted/35 p-3 dark:bg-[#111f2c]">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Obiettivo</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {AI_GOALS.map(goal => (
+                      <Button
+                        key={goal}
+                        type="button"
+                        size="sm"
+                        variant={aiGoal === goal ? 'secondary' : 'outline'}
+                        onClick={() => setAiGoal(goal)}
+                        className={`h-8 rounded-lg px-2.5 text-[11px] ${
+                          aiGoal === goal ? 'border-primary/40 bg-primary/15 text-primary' : ''
+                        }`}
+                      >
+                        {goal}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Allenamenti a settimana</Label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[2, 3, 4, 5, 6].map(days => (
+                      <Button
+                        key={days}
+                        type="button"
+                        size="sm"
+                        variant={aiDaysPerWeek === days ? 'secondary' : 'outline'}
+                        onClick={() => setAiDaysPerWeek(days)}
+                        className={`h-8 rounded-lg font-mono text-xs ${
+                          aiDaysPerWeek === days ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : ''
+                        }`}
+                      >
+                        {days}×
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-border/50 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAiShowAdvanced(v => !v)}
+                    className="flex w-full items-center justify-between text-xs font-semibold text-primary"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <SlidersHorizontal className="size-3.5" />
+                      Opzioni avanzate (macchine ed esclusioni)
+                    </span>
+                    {aiShowAdvanced ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                  </button>
+
+                  {aiShowAdvanced && (
+                    <div className="mt-2.5 space-y-3">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Livello</Label>
+                          <div className="grid grid-cols-3 gap-1">
+                            {AI_LEVELS.map(lvl => (
+                              <Button
+                                key={lvl}
+                                type="button"
+                                size="sm"
+                                variant={aiLevel === lvl ? 'secondary' : 'outline'}
+                                onClick={() => setAiLevel(lvl)}
+                                className={`h-8 rounded-lg px-1.5 text-[10.5px] ${
+                                  aiLevel === lvl ? 'border-primary/40 bg-primary/15 text-primary' : ''
+                                }`}
+                              >
+                                {lvl}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Durata sessione</Label>
+                          <div className="grid grid-cols-3 gap-1">
+                            {[45, 60, 75].map(mins => (
+                              <Button
+                                key={mins}
+                                type="button"
+                                size="sm"
+                                variant={aiSessionMinutes === mins ? 'secondary' : 'outline'}
+                                onClick={() => setAiSessionMinutes(mins)}
+                                className={`h-8 rounded-lg font-mono text-[11px] ${
+                                  aiSessionMinutes === mins ? 'border-primary/40 bg-primary/15 text-primary' : ''
+                                }`}
+                              >
+                                {mins}m
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">
+                          Macchine & attrezzatura disponibile
+                        </Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {AI_EQUIPMENT_OPTIONS.map(item => {
+                            const selected = aiEquipment.includes(item)
+                            return (
+                              <Button
+                                key={item}
+                                type="button"
+                                size="sm"
+                                variant={selected ? 'secondary' : 'outline'}
+                                onClick={() => toggleAiEquipment(item)}
+                                className={`h-7 rounded-lg px-2 text-[11px] ${
+                                  selected ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : ''
+                                }`}
+                              >
+                                {item}
+                              </Button>
+                            )
+                          })}
+                        </div>
+                        <Input
+                          value={aiCustomEquipment}
+                          onChange={e => setAiCustomEquipment(e.target.value)}
+                          placeholder="Altre macchine disponibili (es. Multipower, Peck Deck)"
+                          className="mt-1.5 h-9 text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label htmlFor="ai-excluded-exercises" className="text-[11px] text-amber-500">
+                          Esercizi da NON inserire assolutamente
+                        </Label>
+                        <Input
+                          id="ai-excluded-exercises"
+                          value={aiExcludedExercises}
+                          onChange={e => setAiExcludedExercises(e.target.value)}
+                          placeholder="Es. Stacchi da terra, Leg Extension, Affondi"
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleCopyPromptText(generatedFullPrompt, 'Prompt completo')}
+                    className="h-9 flex-1 rounded-xl border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                  >
+                    <Copy className="mr-1.5 size-3.5" />
+                    Copia prompt completo
+                  </Button>
+                </div>
+
+                <details className="text-xs">
+                  <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+                    <BookOpen className="mr-1 inline size-3.5" />
+                    Anteprima prompt generato
                   </summary>
-                  <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[11px] text-muted-foreground">
-                    {GEMINI_PROMPT_TEMPLATE}
+                  <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[10.5px] text-muted-foreground">
+                    {generatedFullPrompt}
                   </pre>
                 </details>
               </div>
             )}
 
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="ai-paste-textarea" className="text-xs font-semibold">
+                Incolla qui la scheda generata da Gemini
+              </Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAiRawText(GEMINI_EXAMPLE_OUTPUT)}
+                className="h-7 rounded-lg px-2 text-[11px] text-primary"
+              >
+                Carica esempio
+              </Button>
+            </div>
+
             <Textarea
+              id="ai-paste-textarea"
               aria-label="Incolla qui la scheda generata da Gemini"
               value={aiRawText}
               onChange={e => setAiRawText(e.target.value)}
               placeholder={`Incolla qui la scheda generata da Gemini...\nEsempio:\n${GEMINI_FORMAT_GUIDE}`}
-              className="min-h-[140px] font-mono text-xs"
+              className="min-h-[130px] font-mono text-xs"
             />
 
             <div className="flex justify-end gap-2">

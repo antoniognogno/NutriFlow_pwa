@@ -6,7 +6,7 @@ import {
   DEFAULT_PRESETS,
   macroPercent,
 } from './nutritionUtils'
-import { scaleNutrientsForGrams, searchLocalFoods } from './openFoodFacts'
+import { scaleNutrientsForGrams, searchLocalFoods, searchOpenFoodFacts } from './openFoodFacts'
 import {
   appendCachedWaterLog,
   clearCachedWaterLogs,
@@ -159,5 +159,13 @@ describe('Nutrition, Personalized Macros & OpenFoodFacts', () => {
 
     expect(searchLocalFoods('yogurt')[0]?.name).toContain('Yogurt Greco')
     expect(searchLocalFoods('pollo')[0]?.kcalPer100g).toBeGreaterThan(0)
+  })
+
+  it('rejects OpenFoodFacts remote queries when offline', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: false },
+      configurable: true,
+    })
+    await expect(searchOpenFoodFacts('yogurt')).rejects.toThrow(/offline/i)
   })
 })

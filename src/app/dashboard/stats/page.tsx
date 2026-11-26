@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Activity,
@@ -63,6 +63,7 @@ export default function StatsPage() {
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all')
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
+  const progressCardRef = useRef<HTMLDivElement | null>(null)
 
   const [sessions, setSessions] = useState<EditableSession[]>(() => readCachedSessions())
   const [rawSets, setRawSets] = useState<WorkoutSetRow[]>([])
@@ -165,31 +166,28 @@ export default function StatsPage() {
     void fetchInitialStats()
   }, [supabase])
 
-  useEffect(() => {
-    if (!selectedExercise) return
-
-    const fromNewSets = buildExerciseProgressionFromSets(rawSets, selectedExercise)
-    if (fromNewSets.length > 0) {
-      setExerciseProgressData(fromNewSets)
-      return
-    }
-
-    if (!navigator.onLine) {
-      setExerciseProgressData([])
-      return
-    }
-
-    const fetchLegacyProgress = async () => {
-      setExerciseProgressData([])
-      const { data, error } = await supabase.rpc('get_exercise_progression', {
-        p_exercise_name: selectedExercise,
-      })
-      if (!error && data) {
-        setExerciseProgressData(data as ExerciseProgressData[])
+  const effectiveSets = useMemo(() => {
+    const merged = [...rawSets]
+    const seen = new Set(
+      rawSets.map(s => `${s.session_id ?? ''}|${s.exercise_name}|${s.completed_at}|${s.weight_kg}|${s.reps}`),
+    )
+    for (const sess of sessions) {
+      const localSets = readCachedSetsForSession(sess.id)
+      for (const s of localSets) {
+        const key = `${sess.id}|${s.exercise_name}|${s.completed_at}|${s.weight_kg}|${s.reps}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push({
+          session_id: sess.id,
+          exercise_name: s.exercise_name,
+          reps: s.reps,
+          weight_kg: s.weight_kg,
+          completed_at: s.completed_at,
+        })
       }
     }
-    void fetchLegacyProgress()
-  }, [rawSets, selectedExercise, supabase])
+    return merged
+  }, [rawSets, sessions])
 
   const windowDays = period === '4w' ? 28 : period === '8w' ? 56 : null
 
@@ -198,8 +196,8 @@ export default function StatsPage() {
     [sessions, windowDays],
   )
   const filteredSets = useMemo(
-    () => filterByRecentDays(rawSets, s => s.completed_at, windowDays),
-    [rawSets, windowDays],
+    () => filterByRecentDays(effectiveSets, s => s.completed_at, windowDays),
+    [effectiveSets, windowDays],
   )
 
   const summary = useMemo(
@@ -214,9 +212,60 @@ export default function StatsPage() {
   }, [filteredSets, period, rpcVolume])
 
   const personalRecords = useMemo(
-    () => buildPersonalRecords(rawSets, rawSets.length === 0 ? readCachedPerformance() : []),
-    [rawSets],
+    () => buildPersonalRecords(effectiveSets, effectiveSets.length === 0 ? readCachedPerformance() : []),
+    [effectiveSets],
   )
+
+  const exerciseOptions = useMemo(() => {
+    const list = [...distinctExercises, ...personalRecords.map(p => p.exerciseName)].filter(Boolean)
+    const deduped = new Map<string, string>()
+    for (const item of list) {
+      const key = item.trim().toLocaleLowerCase()
+      if (!deduped.has(key)) deduped.set(key, item.trim())
+    }
+    return Array.from(deduped.values())
+  }, [distinctExercises, personalRecords])
+
+  useEffect(() => {
+    if (!selectedExercise) return
+
+    const fromNewSets = buildExerciseProgressionFromSets(effectiveSets, selectedExercise)
+    if (fromNewSets.length > 0) {
+      setExerciseProgressData(fromNewSets)
+      return
+    }
+
+    const prFallback = personalRecords.find(
+      p => p.exerciseName.toLocaleLowerCase() === selectedExercise.toLocaleLowerCase(),
+    )
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setExerciseProgressData(
+        prFallback
+          ? [{ completed_date: (prFallback.lastPerformedAt || new Date().toISOString()).slice(0, 10), max_weight: prFallback.bestWeightKg }]
+          : [],
+      )
+      return
+    }
+
+    const fetchLegacyProgress = async () => {
+      setExerciseProgressData([])
+      const { data, error } = await supabase.rpc('get_exercise_progression', {
+        p_exercise_name: selectedExercise,
+      })
+      if (!error && data && data.length > 0) {
+        setExerciseProgressData(data as ExerciseProgressData[])
+      } else if (prFallback) {
+        setExerciseProgressData([
+          {
+            completed_date: (prFallback.lastPerformedAt || new Date().toISOString()).slice(0, 10),
+            max_weight: prFallback.bestWeightKg,
+          },
+        ])
+      }
+    }
+    void fetchLegacyProgress()
+  }, [effectiveSets, personalRecords, selectedExercise, supabase])
 
   const topExercisesByVolume = useMemo(() => {
     const byName = new Map<string, { name: string; volume: number; sets: number }>()
@@ -406,8 +455,8 @@ export default function StatsPage() {
 
           {/* 1. PER PRIMI: Progressione esercizio & Trend Peso + Media 7g */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            {distinctExercises.length > 0 && (
-              <Card>
+            {exerciseOptions.length > 0 && (
+              <Card ref={progressCardRef}>
                 <CardHeader className="space-y-3">
                   <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:space-y-0">
                     <Label htmlFor="exercise-select" className="flex shrink-0 items-center gap-1.5 font-semibold">
@@ -419,7 +468,7 @@ export default function StatsPage() {
                         <SelectValue placeholder="Seleziona un esercizio..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {distinctExercises.map(ex => (
+                        {exerciseOptions.map(ex => (
                           <SelectItem key={ex} value={ex}>
                             {ex}
                           </SelectItem>
@@ -480,7 +529,10 @@ export default function StatsPage() {
                     <button
                       key={pr.exerciseName}
                       type="button"
-                      onClick={() => setSelectedExercise(pr.exerciseName)}
+                      onClick={() => {
+                        setSelectedExercise(pr.exerciseName)
+                        progressCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      }}
                       className={`nf-interactive flex items-center justify-between gap-2 rounded-xl border p-3 text-left ${
                         isSelected
                           ? 'border-primary/50 bg-primary/10 dark:bg-primary/15'
