@@ -1,6 +1,6 @@
 {
   "name": "nutriflow-pwa",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "scripts": {
     "dev": "vite --host 127.0.0.1",

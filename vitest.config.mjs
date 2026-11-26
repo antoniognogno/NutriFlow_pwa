@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   define: {
-    __APP_VERSION__: JSON.stringify('0.1.1'),
+    __APP_VERSION__: JSON.stringify('0.1.2'),
     __APP_BUILD_ID__: JSON.stringify('test-build'),
   },
   resolve: {

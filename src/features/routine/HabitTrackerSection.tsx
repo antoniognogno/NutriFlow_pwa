@@ -33,7 +33,11 @@ import {
   addCustomHabit,
   buildHistoricalPeriods,
   buildPeriodReport,
+  clampPastOrTodayDateKey,
   computeHabitStreak,
+  countActiveCompletedForDate,
+  formatShortItalianDate,
+  getRelativeDateKey,
   type HabitItem,
   type HabitLogsByDate,
   readHabitLogs,
@@ -82,7 +86,15 @@ export function HabitTrackerSection() {
   const detailedReportRef = useRef<HTMLDivElement>(null)
 
   const todayKey = formatLocalDateKey()
-  const todayCompleted = logs[todayKey] ?? []
+  const yesterdayKey = getRelativeDateKey(-1)
+  const [selectedDateKey, setSelectedDateKey] = useState<string>(() => formatLocalDateKey())
+  const activeDateKey = clampPastOrTodayDateKey(selectedDateKey, todayKey)
+  const isEditingToday = activeDateKey === todayKey
+  const isEditingYesterday = activeDateKey === yesterdayKey
+  const activeCompleted = logs[activeDateKey] ?? []
+  const activeDoneCount = countActiveCompletedForDate(logs, habits, activeDateKey)
+  const todayDoneCount = countActiveCompletedForDate(logs, habits, todayKey)
+  const yesterdayDoneCount = countActiveCompletedForDate(logs, habits, yesterdayKey)
 
   useEffect(() => {
     const refresh = () => {
@@ -166,12 +178,18 @@ export function HabitTrackerSection() {
   }
 
   const handleToggle = (habit: HabitItem) => {
-    const wasDone = todayCompleted.includes(habit.id)
-    const nextLogs = toggleHabitForDate(habit.id, todayKey)
+    const targetDate = activeDateKey
+    const wasDone = activeCompleted.includes(habit.id)
+    const nextLogs = toggleHabitForDate(habit.id, targetDate)
     setLogs(nextLogs)
     window.dispatchEvent(new Event('nutriflow:data-updated'))
     if (!wasDone) {
-      toast.success(`${habit.label} · +${habit.xp} XP`)
+      const whenLabel = isEditingToday
+        ? ''
+        : isEditingYesterday
+          ? ' (Ieri)'
+          : ` (${formatShortItalianDate(targetDate)})`
+      toast.success(`${habit.label}${whenLabel} · +${habit.xp} XP`)
     }
 
     if (habit.id === 'creatine') {
@@ -180,14 +198,14 @@ export function HabitTrackerSection() {
         if (!uid) return
         if (!wasDone) {
           await queueAndSync({
-            id: `creatine_logs:${uid}:${todayKey}`,
+            id: `creatine_logs:${uid}:${targetDate}`,
             userId: uid,
             table: 'creatine_logs',
             conflictTarget: 'user_id,log_date',
             payload: {
               id: crypto.randomUUID(),
               user_id: uid,
-              log_date: todayKey,
+              log_date: targetDate,
               amount_g: 5,
             },
           })
@@ -197,7 +215,7 @@ export function HabitTrackerSection() {
             .from('creatine_logs')
             .delete()
             .eq('user_id', uid)
-            .eq('log_date', todayKey)
+            .eq('log_date', targetDate)
           window.dispatchEvent(new Event('nutriflow:data-updated'))
         }
       })
@@ -247,15 +265,19 @@ export function HabitTrackerSection() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="space-y-3 pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ListChecks className="size-4 text-primary" />
-                Routine di oggi
+                {isEditingToday
+                  ? 'Routine di oggi'
+                  : isEditingYesterday
+                    ? 'Routine di ieri'
+                    : `Routine · ${formatShortItalianDate(activeDateKey)}`}
               </CardTitle>
               <CardDescription className="text-xs">
-                {todayCompleted.length} / {habits.length} completate
+                {activeDoneCount} / {habits.length} completate
               </CardDescription>
             </div>
             <div className="flex items-center gap-1.5">
@@ -279,6 +301,65 @@ export function HabitTrackerSection() {
               </Button>
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/60 bg-muted/35 p-1">
+            <button
+              type="button"
+              onClick={() => setSelectedDateKey(todayKey)}
+              className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                isEditingToday
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span>Oggi</span>
+              <span className="font-mono text-[10px] opacity-80">
+                ({todayDoneCount}/{habits.length})
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedDateKey(yesterdayKey)}
+              className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                isEditingYesterday
+                  ? 'bg-amber-500 text-amber-950 shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span>Ieri · {formatShortItalianDate(yesterdayKey)}</span>
+              <span className="font-mono text-[10px] opacity-85">
+                ({yesterdayDoneCount}/{habits.length})
+              </span>
+            </button>
+            <input
+              type="date"
+              aria-label="Scegli data abitudini"
+              max={todayKey}
+              value={activeDateKey}
+              onChange={e => {
+                if (e.target.value) {
+                  setSelectedDateKey(clampPastOrTodayDateKey(e.target.value, todayKey))
+                }
+              }}
+              className="h-8 w-[8.2rem] shrink-0 rounded-lg border border-input bg-background px-2 font-mono text-[11px] text-foreground"
+            />
+          </div>
+
+          {!isEditingToday && (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300">
+              <span>
+                Modifica retroattiva attiva per{' '}
+                <strong>{isEditingYesterday ? `ieri (${formatShortItalianDate(yesterdayKey)})` : formatShortItalianDate(activeDateKey)}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDateKey(todayKey)}
+                className="shrink-0 font-semibold underline underline-offset-2 hover:text-amber-200"
+              >
+                Torna a oggi
+              </button>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-2.5">
@@ -345,7 +426,7 @@ export function HabitTrackerSection() {
               )
             }
 
-            const done = todayCompleted.includes(habit.id)
+            const done = activeCompleted.includes(habit.id)
             return (
               <button
                 key={habit.id}

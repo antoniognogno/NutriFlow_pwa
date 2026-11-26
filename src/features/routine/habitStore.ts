@@ -150,6 +150,39 @@ export function toggleHabitForDate(
   return next
 }
 
+export function getRelativeDateKey(offsetDays: number, baseDate: Date = new Date()): string {
+  const d = new Date(baseDate)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + offsetDays)
+  return formatLocalDateKey(d)
+}
+
+export function clampPastOrTodayDateKey(
+  candidateKey: string,
+  todayKey: string = formatLocalDateKey(),
+): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidateKey)) return todayKey
+  return candidateKey > todayKey ? todayKey : candidateKey
+}
+
+export function formatShortItalianDate(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  if (!y || !m || !d) return dateKey
+  return new Date(y, m - 1, d).toLocaleDateString('it-IT', {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+export function countActiveCompletedForDate(
+  logs: HabitLogsByDate,
+  habits: HabitItem[],
+  dateKey: string,
+): number {
+  const activeIds = new Set(habits.map(h => h.id))
+  return (logs[dateKey] ?? []).filter(id => activeIds.has(id)).length
+}
+
 export interface HeatmapCell {
   dateKey: string
   dayLabel: string

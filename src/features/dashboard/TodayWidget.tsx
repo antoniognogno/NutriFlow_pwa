@@ -10,8 +10,14 @@ import {
   readCachedWaterState,
   sumWaterLogs,
 } from '@/features/nutrition/waterOfflineCache'
-import { queueAndSync, useOfflineSync } from '@/features/offline/useOfflineSync'
-import { readHabitLogs, readHabits, syncCreatineHabit } from '@/features/routine/habitStore'
+import { queueAndSync, removeOutboxItem, useOfflineSync } from '@/features/offline/useOfflineSync'
+import {
+  formatShortItalianDate,
+  getRelativeDateKey,
+  readHabitLogs,
+  readHabits,
+  syncCreatineHabit,
+} from '@/features/routine/habitStore'
 import { readWeightLogs } from '@/features/routine/weightStore'
 import { useTimestampTimer } from '@/features/timers/useTimestampTimer'
 import type { HomeDashboardSnapshot } from '@/features/dashboard/homeData'
@@ -39,6 +45,10 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
   const { pendingCount } = useOfflineSync()
   const [userId, setUserId] = useState<string | null>(null)
   const [creatineAmount, setCreatineAmount] = useState<number | null>(null)
+  const [yesterdayCreatineDone, setYesterdayCreatineDone] = useState<boolean>(() => {
+    const yKey = getRelativeDateKey(-1)
+    return (readHabitLogs()[yKey] ?? []).includes('creatine')
+  })
   const [waterMlToday, setWaterMlToday] = useState<number>(0)
   const [focusMinutesToday, setFocusMinutesToday] = useState<number>(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -48,6 +58,7 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const userIdRef = useRef(userId)
   const todayKey = localDateKey(new Date())
+  const yesterdayKey = getRelativeDateKey(-1)
 
   useEffect(() => {
     userIdRef.current = userId
@@ -89,15 +100,23 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
   useEffect(() => {
     if (!sharedData) return
     if (sharedData.userId) setUserId(sharedData.userId)
-    const routineCreatineDone = (readHabitLogs()[todayKey] ?? []).includes('creatine')
+    const routineLogs = readHabitLogs()
+    const routineCreatineDone = (routineLogs[todayKey] ?? []).includes('creatine')
     if (sharedData.creatineAmountToday !== null) {
       syncCreatineHabit(true, todayKey)
     }
+    const dbYesterdayDone = sharedData.creatineDates.includes(yesterdayKey)
+    if (dbYesterdayDone) {
+      syncCreatineHabit(true, yesterdayKey)
+    }
+    setYesterdayCreatineDone(
+      dbYesterdayDone || (routineLogs[yesterdayKey] ?? []).includes('creatine'),
+    )
     setCreatineAmount(sharedData.creatineAmountToday ?? (routineCreatineDone ? CREATINE_GRAMS : null))
     setWaterMlToday(sharedData.waterMlToday)
     setFocusMinutesToday(sharedData.focusMinutesToday)
     setIsLoading(false)
-  }, [sharedData, todayKey])
+  }, [sharedData, todayKey, yesterdayKey])
 
   useEffect(() => {
     let active = true
@@ -106,12 +125,21 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
       setNotificationsEnabled('Notification' in window && Notification.permission === 'granted')
       if (!navigator.onLine) {
         const cachedWater = sumWaterLogs(readCachedWaterState().logs)
-        const routineCreatineDone = (readHabitLogs()[todayKey] ?? []).includes('creatine')
+        const routineLogs = readHabitLogs()
+        const routineCreatineDone = (routineLogs[todayKey] ?? []).includes('creatine')
         setCreatineAmount(routineCreatineDone ? CREATINE_GRAMS : null)
+        setYesterdayCreatineDone((routineLogs[yesterdayKey] ?? []).includes('creatine'))
         setWaterMlToday(cachedWater)
         setIsLoading(false)
       }
-      return
+      const syncFromStorage = () => {
+        const routineLogs = readHabitLogs()
+        setYesterdayCreatineDone((routineLogs[yesterdayKey] ?? []).includes('creatine'))
+      }
+      window.addEventListener('nutriflow:data-updated', syncFromStorage)
+      return () => {
+        window.removeEventListener('nutriflow:data-updated', syncFromStorage)
+      }
     }
 
     const loadToday = async () => {
@@ -245,6 +273,54 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
     }
   }
 
+  const toggleYesterdayCreatine = async () => {
+    const nextDone = !yesterdayCreatineDone
+    setYesterdayCreatineDone(nextDone)
+    syncCreatineHabit(nextDone, yesterdayKey)
+    window.dispatchEvent(new Event('nutriflow:data-updated'))
+
+    if (!userId) {
+      toast.success(
+        nextDone
+          ? `Creatina di ieri (${formatShortItalianDate(yesterdayKey)}) segnata.`
+          : `Creatina di ieri (${formatShortItalianDate(yesterdayKey)}) rimossa.`,
+      )
+      return
+    }
+
+    try {
+      if (nextDone) {
+        await queueAndSync({
+          id: `creatine_logs:${userId}:${yesterdayKey}`,
+          userId,
+          table: 'creatine_logs',
+          conflictTarget: 'user_id,log_date',
+          payload: {
+            id: crypto.randomUUID(),
+            user_id: userId,
+            log_date: yesterdayKey,
+            amount_g: CREATINE_GRAMS,
+          },
+        })
+        toast.success(`Creatina di ieri (${formatShortItalianDate(yesterdayKey)}) registrata!`)
+      } else {
+        await removeOutboxItem(`creatine_logs:${userId}:${yesterdayKey}`).catch(() => undefined)
+        if (navigator.onLine) {
+          await supabase
+            .from('creatine_logs')
+            .delete()
+            .eq('user_id', userId)
+            .eq('log_date', yesterdayKey)
+        }
+        toast.info(`Creatina di ieri (${formatShortItalianDate(yesterdayKey)}) rimossa.`)
+      }
+      window.dispatchEvent(new Event('nutriflow:data-updated'))
+    } catch (error) {
+      console.error('Impossibile aggiornare creatina di ieri:', error)
+      toast.error('Errore nell’aggiornamento della creatina di ieri.')
+    }
+  }
+
   const enableNotifications = async () => {
     if (!('Notification' in window)) {
       toast.error('Le notifiche non sono supportate da questo browser.')
@@ -356,6 +432,29 @@ export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot
             >
               <Check className="size-5" />
             </Button>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs">
+            <span className="text-muted-foreground">
+              Ieri ({formatShortItalianDate(yesterdayKey)})
+            </span>
+            <button
+              type="button"
+              onClick={() => void toggleYesterdayCreatine()}
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                yesterdayCreatineDone
+                  ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                  : 'border border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+              }`}
+            >
+              {yesterdayCreatineDone ? (
+                <>
+                  <Check className="size-3" />
+                  Presa ieri (modifica)
+                </>
+              ) : (
+                'Segna presa ieri'
+              )}
+            </button>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
             <label className="flex items-center gap-2 text-xs text-muted-foreground">

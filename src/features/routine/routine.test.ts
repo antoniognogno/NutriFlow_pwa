@@ -4,8 +4,11 @@ import {
   buildHabitHeatmapDays,
   buildHistoricalPeriods,
   buildPeriodReport,
+  clampPastOrTodayDateKey,
   computeHabitStreak,
+  countActiveCompletedForDate,
   DEFAULT_HABITS,
+  getRelativeDateKey,
   readHabitLogs,
   readHabits,
   syncCreatineHabit,
@@ -146,5 +149,27 @@ describe('Habit Tracker, Body Weight Tracker & Profile Goals', () => {
     const loaded = readBodyProfile()
     expect(loaded.targetWeightKg).toBe(72.0)
     expect(computeBmi(loaded.weightKg, loaded.heightCm)).toBe(23.7)
+  })
+
+  it('supports retroactive yesterday and past-date habit/creatine toggles without future dates', () => {
+    const afterMidnight = new Date('2026-11-27T00:08:00')
+    const todayKey = getRelativeDateKey(0, afterMidnight)
+    const yesterdayKey = getRelativeDateKey(-1, afterMidnight)
+
+    expect(todayKey).toBe('2026-11-27')
+    expect(yesterdayKey).toBe('2026-11-26')
+    expect(clampPastOrTodayDateKey('2026-11-28', todayKey)).toBe('2026-11-27')
+    expect(clampPastOrTodayDateKey('2026-11-25', todayKey)).toBe('2026-11-25')
+
+    syncCreatineHabit(true, yesterdayKey)
+    toggleHabitForDate('sleep', yesterdayKey)
+    // Legacy deleted habit ID should not inflate active completed count above active habits length
+    toggleHabitForDate('deleted-old-habit', yesterdayKey)
+
+    const logs = readHabitLogs()
+    expect(logs[yesterdayKey]).toContain('creatine')
+    expect(logs[yesterdayKey]).toContain('sleep')
+    expect(computeHabitStreak(logs, afterMidnight)).toBe(1)
+    expect(countActiveCompletedForDate(logs, DEFAULT_HABITS, yesterdayKey)).toBe(2)
   })
 })
