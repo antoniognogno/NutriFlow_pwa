@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckCircle2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
 import { Badge } from '@/components/ui/badge'
@@ -42,8 +43,48 @@ export function UpdateProgressModal({
 }: UpdateProgressModalProps) {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [autoRestartPaused, setAutoRestartPaused] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const restartCallbackRef = useRef(onRestartNow)
   restartCallbackRef.current = onRestartNow
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Hard-lock page scroll while the update card is visible so neither wheel nor touch can shift it
+  useEffect(() => {
+    if (!open || typeof document === 'undefined' || typeof window === 'undefined') return
+    const savedY = window.scrollY
+    const prevHtmlOverflow = document.documentElement.style.overflow
+    const prevBodyOverflow = document.body.style.overflow
+    const prevBodyPosition = document.body.style.position
+    const prevBodyTop = document.body.style.top
+    const prevBodyLeft = document.body.style.left
+    const prevBodyRight = document.body.style.right
+    const prevBodyWidth = document.body.style.width
+    const prevOverscroll = document.body.style.overscrollBehavior
+
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${savedY}px`
+    document.body.style.left = '0'
+    document.body.style.right = '0'
+    document.body.style.width = '100%'
+    document.body.style.overscrollBehavior = 'none'
+
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow
+      document.body.style.overflow = prevBodyOverflow
+      document.body.style.position = prevBodyPosition
+      document.body.style.top = prevBodyTop
+      document.body.style.left = prevBodyLeft
+      document.body.style.right = prevBodyRight
+      document.body.style.width = prevBodyWidth
+      document.body.style.overscrollBehavior = prevOverscroll
+      window.scrollTo({ top: savedY, behavior: 'auto' })
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || stage !== 'restart_required') {
@@ -69,7 +110,7 @@ export function UpdateProgressModal({
     return () => window.clearInterval(interval)
   }, [autoRestartPaused, open, stage])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
   const isWorking =
     stage === 'checking' ||
@@ -79,12 +120,12 @@ export function UpdateProgressModal({
   const isCompleted = stage === 'restart_required' || stage === 'up_to_date'
   const safeProgress = Math.max(0, Math.min(100, Math.round(progress)))
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="nf-update-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden overscroll-none touch-none bg-background/85 px-4 backdrop-blur-md"
     >
       <div className="nf-pop-enter relative w-full max-w-sm overflow-hidden rounded-3xl border border-border/80 bg-card p-6 text-card-foreground shadow-2xl">
         <div
@@ -97,7 +138,7 @@ export function UpdateProgressModal({
             type="button"
             aria-label="Chiudi finestra aggiornamento"
             onClick={onClose}
-            className="absolute top-4 right-4 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="absolute top-4 right-4 z-20 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="size-4" />
           </button>
@@ -237,6 +278,7 @@ export function UpdateProgressModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

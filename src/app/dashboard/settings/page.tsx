@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -123,7 +123,7 @@ export default function SettingsPage() {
   const [updateTargetVersion, setUpdateTargetVersion] = useState<string | null>(null)
   const [restartEvaluation, setRestartEvaluation] = useState<RestartEvaluation | null>(null)
   const [updateErrorText, setUpdateErrorText] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const updatesCardRef = useRef<HTMLDivElement>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -137,7 +137,6 @@ export default function SettingsPage() {
         }
         setUserId(user.id)
         setEmail(user.email ?? '')
-        setIsLoading(false)
 
         if (!navigator.onLine) return
 
@@ -171,8 +170,6 @@ export default function SettingsPage() {
         }
       } catch (error) {
         console.error('Errore caricamento profilo:', error)
-      } finally {
-        setIsLoading(false)
       }
     }
     void loadProfile()
@@ -306,6 +303,7 @@ export default function SettingsPage() {
       toast.warning(`Connettiti a internet per cercare aggiornamenti (versione attuale v${APP_VERSION}).`)
       return
     }
+    updatesCardRef.current?.scrollIntoView({ behavior: 'auto', block: 'center' })
     setIsCheckingUpdate(true)
     setUpdateModalOpen(true)
     setUpdateStage('checking')
@@ -462,10 +460,6 @@ export default function SettingsPage() {
     router.replace('/login')
   }
 
-  if (isLoading) {
-    return <p className="py-12 text-center text-sm text-muted-foreground">Caricamento impostazioni...</p>
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-8">
       <header className="flex items-center gap-3">
@@ -479,7 +473,7 @@ export default function SettingsPage() {
       </header>
 
       {!isProfileEditorOpen ? (
-        <Card className="nf-pop-enter border-primary/25" data-tour="settings-profile-card">
+        <Card className="border-primary/25" data-tour="settings-profile-card">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
               <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -905,7 +899,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card ref={updatesCardRef}>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Tutorial & Aggiornamenti</CardTitle>
