@@ -16,6 +16,7 @@ import {
   toggleHabitForDate,
   updateHabitLabel,
 } from './habitStore'
+import { stepRecentDateKey } from '@/components/ui/RecentDaysStrip'
 import { computeBmi, readBodyProfile, saveBodyProfile } from './profileGoalsStore'
 import {
   buildWeightChartSeries,
@@ -179,5 +180,11 @@ describe('Habit Tracker, Body Weight Tracker & Profile Goals', () => {
     expect(last7[1].isYesterday).toBe(true)
     expect(last7[1].dateKey).toBe('2026-11-26')
     expect(last7[6].dateKey).toBe('2026-11-21')
+
+    expect(stepRecentDateKey(last7, '2026-11-27', -1)).toBe('2026-11-26')
+    expect(stepRecentDateKey(last7, '2026-11-27', 1)).toBeNull()
+    expect(stepRecentDateKey(last7, '2026-11-26', 1)).toBe('2026-11-27')
+    expect(stepRecentDateKey(last7, '2026-11-21', -1)).toBeNull()
+    expect(stepRecentDateKey(last7, '2026-11-21', -1, true)).toBe('2026-11-20')
   })
 })

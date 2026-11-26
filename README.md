@@ -1,6 +1,6 @@
 # NutriFlow PWA
 
-**Versione attuale:** `0.1.3`
+**Versione attuale:** `0.1.4`
 
 Applicazione web progressiva (PWA) offline-first per organizzare allenamenti, nutrizione, idratazione, routine quotidiana e statistiche personali.
 
