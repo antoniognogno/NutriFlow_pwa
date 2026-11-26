@@ -6,15 +6,27 @@ export type BeardStyle = 'none' | 'short' | 'full'
 export type EyeColor = 'brown' | 'blue' | 'green' | 'hazel' | 'gray'
 export type SkinTone = 'fair' | 'light' | 'medium' | 'tan'
 export type BgAccent = 'sky' | 'emerald' | 'amber' | 'slate'
+export type BoringAvatarVariant = 'beam' | 'marble' | 'sunset' | 'bauhaus' | 'ring' | 'pixel'
+export type AvatarRenderMode = 'portrait' | 'boring'
 
 export interface ProfileAvatarConfig {
   presetId: string | null
+  renderMode?: AvatarRenderMode
+  boringVariant?: BoringAvatarVariant
+  boringSeed?: string
   hairStyle: HairStyle
   hairColor: HairColor
   beard: BeardStyle
   eyeColor: EyeColor
   skinTone: SkinTone
   bgAccent: BgAccent
+}
+
+export const BORING_PALETTES: Record<BgAccent, string[]> = {
+  sky: ['#0f2738', '#267491', '#7aa6bd', '#34d399', '#e2e8f0'],
+  emerald: ['#0c2a24', '#059669', '#34d399', '#7aa6bd', '#f8fafc'],
+  amber: ['#2c1f0e', '#d97706', '#f59e0b', '#fbbf24', '#fef3c7'],
+  slate: ['#16202c', '#475569', '#91a2ae', '#7aa6bd', '#e2e8f0'],
 }
 
 export interface AvatarPreset {
@@ -149,6 +161,9 @@ export function readProfileAvatar(): ProfileAvatarConfig {
     const parsed = JSON.parse(raw) as Partial<ProfileAvatarConfig>
     return {
       presetId: typeof parsed.presetId === 'string' || parsed.presetId === null ? parsed.presetId : null,
+      renderMode: parsed.renderMode === 'boring' ? 'boring' : 'portrait',
+      boringVariant: parsed.boringVariant ?? 'beam',
+      boringSeed: typeof parsed.boringSeed === 'string' && parsed.boringSeed.trim() ? parsed.boringSeed.slice(0, 40) : 'NutriFlow',
       hairStyle: parsed.hairStyle ?? DEFAULT_AVATAR_CONFIG.hairStyle,
       hairColor: parsed.hairColor ?? DEFAULT_AVATAR_CONFIG.hairColor,
       beard: parsed.beard ?? DEFAULT_AVATAR_CONFIG.beard,

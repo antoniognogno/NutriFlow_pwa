@@ -14,6 +14,7 @@ import { queueAndSync, useOfflineSync } from '@/features/offline/useOfflineSync'
 import { readHabitLogs, readHabits, syncCreatineHabit } from '@/features/routine/habitStore'
 import { readWeightLogs } from '@/features/routine/weightStore'
 import { useTimestampTimer } from '@/features/timers/useTimestampTimer'
+import type { HomeDashboardSnapshot } from '@/features/dashboard/homeData'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
@@ -33,7 +34,7 @@ function formatTime(milliseconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function TodayWidget() {
+export function TodayWidget({ sharedData }: { sharedData?: HomeDashboardSnapshot | null }) {
   const supabase = createClient()
   const { pendingCount } = useOfflineSync()
   const [userId, setUserId] = useState<string | null>(null)
@@ -86,7 +87,33 @@ export function TodayWidget() {
   })
 
   useEffect(() => {
+    if (!sharedData) return
+    if (sharedData.userId) setUserId(sharedData.userId)
+    const routineCreatineDone = (readHabitLogs()[todayKey] ?? []).includes('creatine')
+    if (sharedData.creatineAmountToday !== null) {
+      syncCreatineHabit(true, todayKey)
+    }
+    setCreatineAmount(sharedData.creatineAmountToday ?? (routineCreatineDone ? CREATINE_GRAMS : null))
+    setWaterMlToday(sharedData.waterMlToday)
+    setFocusMinutesToday(sharedData.focusMinutesToday)
+    setIsLoading(false)
+  }, [sharedData, todayKey])
+
+  useEffect(() => {
     let active = true
+    if (sharedData !== undefined) {
+      setReminderTime(localStorage.getItem('lifeflow:creatine-reminder-time') ?? DEFAULT_REMINDER_TIME)
+      setNotificationsEnabled('Notification' in window && Notification.permission === 'granted')
+      if (!navigator.onLine) {
+        const cachedWater = sumWaterLogs(readCachedWaterState().logs)
+        const routineCreatineDone = (readHabitLogs()[todayKey] ?? []).includes('creatine')
+        setCreatineAmount(routineCreatineDone ? CREATINE_GRAMS : null)
+        setWaterMlToday(cachedWater)
+        setIsLoading(false)
+      }
+      return
+    }
+
     const loadToday = async () => {
       const { data: { session }, error: authError } = await supabase.auth.getSession()
       if (authError) throw authError
@@ -162,7 +189,7 @@ export function TodayWidget() {
       active = false
       window.removeEventListener('nutriflow:data-updated', syncLocalState)
     }
-  }, [supabase, todayKey])
+  }, [supabase, todayKey, sharedData])
 
   useEffect(() => {
     const checkCreatineReminder = () => {

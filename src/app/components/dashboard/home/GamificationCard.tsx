@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import type { HomeDashboardSnapshot } from '@/features/dashboard/homeData'
 import { createClient } from '@/lib/supabase/client'
 import {
   activateWeeklyStreakFreeze,
@@ -18,7 +19,7 @@ import { DEFAULT_WATER_GOAL_ML, getStartOfWeekIso, WEEKLY_WORKOUT_GOAL } from '.
 import { computeConsecutiveDays, formatLocalDateKey } from './recentWinsUtils'
 import { computeHabitStreak, countTotalHabitCheckins, readHabitLogs } from '@/features/routine/habitStore'
 
-export function GamificationCard() {
+export function GamificationCard({ sharedData }: { sharedData?: HomeDashboardSnapshot | null }) {
   const supabase = createClient()
   const [summary, setSummary] = useState<GamificationSummary | null>(null)
   const [streakDays, setStreakDays] = useState(0)
@@ -26,7 +27,69 @@ export function GamificationCard() {
   const [freezeUsedDate, setFreezeUsedDate] = useState<string | null>(() => readFrozenDateKey())
   const [canRecoverStreak, setCanRecoverStreak] = useState(false)
 
+  const applyGamificationSnapshot = useCallback(
+    (
+      rawDates: string[],
+      waterMlToday: number,
+      waterGoalMl: number,
+      focusMinutesToday: number,
+      totalSessions: number,
+      weekCount: number,
+    ) => {
+      const startOfDay = new Date()
+      startOfDay.setHours(0, 0, 0, 0)
+      const todayKey = formatLocalDateKey()
+      const yesterday = new Date(startOfDay)
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayKey = formatLocalDateKey(yesterday)
+
+      const activeFreeze = readFrozenDateKey()
+      setFreezeUsedDate(activeFreeze)
+      const effectiveDates = activeFreeze ? [...rawDates, activeFreeze] : rawDates
+      const streak = computeConsecutiveDays(effectiveDates, todayKey)
+      const creatineDoneToday = rawDates.includes(todayKey)
+
+      const missedYesterday = !rawDates.includes(yesterdayKey) && rawDates.length > 0 && !activeFreeze
+      setCanRecoverStreak(missedYesterday)
+
+      const habitLogs = readHabitLogs()
+      const habitStreak = computeHabitStreak(habitLogs)
+      const habitCheckinsTotal = countTotalHabitCheckins(habitLogs)
+      const effectiveStreak = Math.max(streak, habitStreak)
+
+      setStreakDays(effectiveStreak)
+      setSessionsThisWeek(weekCount)
+      setSummary(
+        computeGamificationSummary({
+          totalSessions,
+          sessionsThisWeek: weekCount,
+          weeklyTarget: WEEKLY_WORKOUT_GOAL,
+          creatineDoneToday,
+          waterMlToday,
+          waterGoalMl: waterGoalMl || DEFAULT_WATER_GOAL_ML,
+          focusMinutesToday,
+          creatineStreakDays: effectiveStreak,
+          habitCheckinsTotal,
+        }),
+      )
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!sharedData) return
+    applyGamificationSnapshot(
+      sharedData.creatineDates,
+      sharedData.waterMlToday,
+      sharedData.waterGoalMl,
+      sharedData.focusMinutesToday,
+      sharedData.totalSessions,
+      sharedData.sessionsThisWeek,
+    )
+  }, [sharedData, applyGamificationSnapshot])
+
   const loadGamification = useCallback(async () => {
+    if (sharedData !== undefined) return
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
@@ -51,47 +114,24 @@ export function GamificationCard() {
       ])
 
       const rawDates = (creatineRes.data ?? []).map(item => item.log_date)
-      const activeFreeze = readFrozenDateKey()
-      setFreezeUsedDate(activeFreeze)
-      const effectiveDates = activeFreeze ? [...rawDates, activeFreeze] : rawDates
-      const streak = computeConsecutiveDays(effectiveDates, todayKey)
-      const creatineDoneToday = rawDates.includes(todayKey)
-
-      // Offre il Freeze settimanale se ieri mancava la creatina ma l'utente ha altri log nei giorni precedenti
-      const missedYesterday = !rawDates.includes(yesterdayKey) && rawDates.length > 0 && !activeFreeze
-      setCanRecoverStreak(missedYesterday)
-
       const waterMlToday = (waterRes.data ?? []).reduce((sum, row) => sum + (row.amount_ml || 0), 0)
       const waterGoalMl = profileRes.data?.water_goal_ml || DEFAULT_WATER_GOAL_ML
       const focusMinutesToday = Math.round(
         (focusRes.data ?? []).reduce((sum, row) => sum + (row.duration_seconds || 0), 0) / 60,
       )
       const weekCount = weekRes.count ?? 0
-
-      const habitLogs = readHabitLogs()
-      const habitStreak = computeHabitStreak(habitLogs)
-      const habitCheckinsTotal = countTotalHabitCheckins(habitLogs)
-      const effectiveStreak = Math.max(streak, habitStreak)
-
-      setStreakDays(effectiveStreak)
-      setSessionsThisWeek(weekCount)
-      setSummary(
-        computeGamificationSummary({
-          totalSessions: totalRes.count ?? 0,
-          sessionsThisWeek: weekCount,
-          weeklyTarget: WEEKLY_WORKOUT_GOAL,
-          creatineDoneToday,
-          waterMlToday,
-          waterGoalMl,
-          focusMinutesToday,
-          creatineStreakDays: effectiveStreak,
-          habitCheckinsTotal,
-        }),
+      applyGamificationSnapshot(
+        rawDates,
+        waterMlToday,
+        waterGoalMl,
+        focusMinutesToday,
+        totalRes.count ?? 0,
+        weekCount,
       )
     } catch (error) {
       console.error('Impossibile calcolare i dati gamification:', error)
     }
-  }, [supabase])
+  }, [supabase, sharedData, applyGamificationSnapshot])
 
   useEffect(() => {
     void loadGamification()
@@ -110,6 +150,7 @@ export function GamificationCard() {
     const ok = activateWeeklyStreakFreeze(formatLocalDateKey(yesterday))
     if (ok) {
       toast.success('Streak Freeze attivato per questa settimana!')
+      window.dispatchEvent(new Event('nutriflow:data-updated'))
       void loadGamification()
     }
   }

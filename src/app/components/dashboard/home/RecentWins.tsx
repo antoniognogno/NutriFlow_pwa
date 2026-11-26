@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Droplets, Dumbbell, Flame, Trophy } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import type { HomeDashboardSnapshot } from '@/features/dashboard/homeData'
 import { createClient } from '@/lib/supabase/client'
 import { DEFAULT_WATER_GOAL_ML } from './progressUtils'
 import { computeConsecutiveDays, formatLocalDateKey } from './recentWinsUtils'
@@ -17,11 +18,75 @@ interface HighlightCard {
   subtitle: string
 }
 
-export function RecentWins() {
+export function RecentWins({ sharedData }: { sharedData?: HomeDashboardSnapshot | null }) {
   const supabase = createClient()
   const [cards, setCards] = useState<HighlightCard[]>([])
 
+  const applyHighlightSnapshot = useCallback(
+    (
+      lastWorkout: HomeDashboardSnapshot['lastWorkout'],
+      topLift: HomeDashboardSnapshot['topLift'],
+      creatineDates: string[],
+      waterMl: number,
+      waterGoal: number,
+    ) => {
+      const streak = computeConsecutiveDays(creatineDates, formatLocalDateKey())
+      const safeGoal = waterGoal || DEFAULT_WATER_GOAL_ML
+      const waterPct = Math.round((waterMl / safeGoal) * 100)
+
+      setCards([
+        {
+          id: 'last-workout',
+          href: '/dashboard/gym',
+          icon: <Dumbbell className="size-4 text-emerald-400" />,
+          badgeBg: 'bg-emerald-500/15',
+          title: lastWorkout ? lastWorkout.workout_name : 'Primo Workout',
+          subtitle: lastWorkout
+            ? `${Math.max(1, Math.round((lastWorkout.duration_seconds || 0) / 60))} min · ${new Date(lastWorkout.started_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}`
+            : 'Avvia una scheda pronta',
+        },
+        {
+          id: 'top-pr',
+          href: '/dashboard/stats',
+          icon: <Trophy className="size-4 text-amber-400" />,
+          badgeBg: 'bg-amber-500/15',
+          title: topLift ? `${topLift.max_weight_kg} kg` : 'Record Personali',
+          subtitle: topLift ? topLift.exercise_name : 'Completa una serie',
+        },
+        {
+          id: 'water-today',
+          href: '/dashboard/water',
+          icon: <Droplets className="size-4 text-sky-400" />,
+          badgeBg: 'bg-sky-500/15',
+          title: `Idratazione ${waterPct}%`,
+          subtitle: `${waterMl.toLocaleString('it-IT')} / ${safeGoal.toLocaleString('it-IT')} ml`,
+        },
+        {
+          id: 'creatine-streak',
+          href: '/dashboard',
+          icon: <Flame className="size-4 text-primary" />,
+          badgeBg: 'bg-primary/15',
+          title: streak > 0 ? `${streak}g Creatina` : 'Creatina 5g',
+          subtitle: streak > 0 ? 'Giorni di fila' : 'Spunta da Oggi',
+        },
+      ])
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!sharedData) return
+    applyHighlightSnapshot(
+      sharedData.lastWorkout,
+      sharedData.topLift,
+      sharedData.creatineDates,
+      sharedData.waterMlToday,
+      sharedData.waterGoalMl,
+    )
+  }, [sharedData, applyHighlightSnapshot])
+
   const loadHighlights = useCallback(async () => {
+    if (sharedData !== undefined) return
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
@@ -65,54 +130,14 @@ export function RecentWins() {
 
       const topLift = topLiftRes.data
       const lastWorkout = lastWorkoutRes.data
-      const streak = computeConsecutiveDays(
-        (creatineRes.data ?? []).map(item => item.log_date),
-        formatLocalDateKey(),
-      )
+      const streak = (creatineRes.data ?? []).map(item => item.log_date)
       const waterMl = (waterRes.data ?? []).reduce((sum, row) => sum + (row.amount_ml || 0), 0)
       const waterGoal = profileRes.data?.water_goal_ml || DEFAULT_WATER_GOAL_ML
-      const waterPct = Math.round((waterMl / waterGoal) * 100)
-
-      setCards([
-        {
-          id: 'last-workout',
-          href: '/dashboard/gym',
-          icon: <Dumbbell className="size-4 text-emerald-400" />,
-          badgeBg: 'bg-emerald-500/15',
-          title: lastWorkout ? lastWorkout.workout_name : 'Primo Workout',
-          subtitle: lastWorkout
-            ? `${Math.max(1, Math.round((lastWorkout.duration_seconds || 0) / 60))} min · ${new Date(lastWorkout.started_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}`
-            : 'Avvia una scheda pronta',
-        },
-        {
-          id: 'top-pr',
-          href: '/dashboard/stats',
-          icon: <Trophy className="size-4 text-amber-400" />,
-          badgeBg: 'bg-amber-500/15',
-          title: topLift ? `${topLift.max_weight_kg} kg` : 'Record Personali',
-          subtitle: topLift ? topLift.exercise_name : 'Completa una serie',
-        },
-        {
-          id: 'water-today',
-          href: '/dashboard/water',
-          icon: <Droplets className="size-4 text-sky-400" />,
-          badgeBg: 'bg-sky-500/15',
-          title: `Idratazione ${waterPct}%`,
-          subtitle: `${waterMl.toLocaleString('it-IT')} / ${waterGoal.toLocaleString('it-IT')} ml`,
-        },
-        {
-          id: 'creatine-streak',
-          href: '/dashboard',
-          icon: <Flame className="size-4 text-primary" />,
-          badgeBg: 'bg-primary/15',
-          title: streak > 0 ? `${streak}g Creatina` : 'Creatina 5g',
-          subtitle: streak > 0 ? 'Giorni di fila' : 'Spunta da Oggi',
-        },
-      ])
+      applyHighlightSnapshot(lastWorkout, topLift, streak, waterMl, waterGoal)
     } catch (error) {
       console.error('Impossibile caricare gli highlights reali:', error)
     }
-  }, [supabase])
+  }, [supabase, sharedData, applyHighlightSnapshot])
 
   useEffect(() => {
     void loadHighlights()

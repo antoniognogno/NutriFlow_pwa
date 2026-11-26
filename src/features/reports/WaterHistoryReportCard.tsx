@@ -1,11 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { useTheme } from 'next-themes'
 import { CalendarRange, Droplets } from 'lucide-react'
+import { LightweightBarChart } from '@/components/ui/LightweightBarChart'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { chartColors } from '@/config/chartColors'
 import { readCachedWaterState } from '@/features/nutrition/waterOfflineCache'
 import { createClient } from '@/lib/supabase/client'
 import { PeriodNavigator } from './PeriodNavigator'
@@ -28,8 +26,6 @@ export function WaterHistoryReportCard({
   refreshSignal = 0,
 }: WaterHistoryReportCardProps) {
   const supabase = useMemo(() => createClient(), [])
-  const { resolvedTheme } = useTheme()
-  const colors = resolvedTheme === 'light' ? chartColors.light : chartColors.dark
 
   const [period, setPeriod] = useState<FullReportPeriod>('week')
   const [offsets, setOffsets] = useState<Record<FullReportPeriod, number>>({
@@ -101,6 +97,17 @@ export function WaterHistoryReportCard({
     [logs, periodWindow, dailyGoal],
   )
 
+  const chartData = useMemo(
+    () =>
+      summary.chartSeries.map(item => ({
+        label: item.label,
+        value: item.ml,
+        accent: item.goalMet,
+        secondaryText: item.goalMet ? 'Target OK' : undefined,
+      })),
+    [summary.chartSeries],
+  )
+
   return (
     <Card>
       <CardHeader className="space-y-3 pb-3">
@@ -156,77 +163,25 @@ export function WaterHistoryReportCard({
         {isLoading ? (
           <p className="py-10 text-center text-xs text-muted-foreground">Caricamento report...</p>
         ) : (
-          <div className="h-[210px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary.chartSeries} margin={{ top: 8, right: 6, bottom: 0, left: -24 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
-                <XAxis
-                  dataKey="label"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  stroke={colors.text}
-                  interval={period === 'month' ? 4 : period === 'day' ? 3 : 0}
-                />
-                <YAxis
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  stroke={colors.text}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(122, 166, 189, 0.08)' }}
-                  contentStyle={{
-                    backgroundColor: colors.tooltipBg,
-                    borderColor: colors.tooltipBorder,
-                    color: colors.tooltipText,
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value: number) => [
-                    `${value.toLocaleString('it-IT')} ml`,
-                    period === '3m' || period === '6m' || period === 'year' ? 'Media/g' : 'Acqua',
-                  ]}
-                />
-                <Bar dataKey="ml" radius={[4, 4, 0, 0]} maxBarSize={24}>
-                  {summary.chartSeries.map((entry, idx) => (
-                    <Cell
-                      key={`${entry.label}-${idx}`}
-                      fill={entry.goalMet ? colors.barAccent : colors.bar}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <LightweightBarChart
+            data={chartData}
+            unit="ml"
+            heightPx={180}
+            maxTicks={period === 'month' ? 6 : 8}
+            defaultTone="sky"
+            accentTone="emerald"
+          />
         )}
 
-        {period === 'day' && logs.length > 0 && (
-          <div className="space-y-1.5 border-t border-border/50 pt-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Droplets className="size-3.5 text-sky-500" />
-              Bevute del giorno ({logs.length})
-            </p>
-            <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
-              {logs.slice(0, 12).map((item, idx) => (
-                <div
-                  key={`${item.id ?? item.localId ?? idx}`}
-                  className="flex items-center justify-between rounded-lg bg-muted/35 px-2.5 py-1.5 text-xs dark:bg-[#111f2c]/70"
-                >
-                  <span className="text-muted-foreground">
-                    {new Date(item.created_at).toLocaleTimeString('it-IT', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                  <span className="font-mono font-semibold text-sky-600 dark:text-sky-400">
-                    +{item.amount_ml} ml
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <Droplets className="size-3.5 text-sky-500" />
+            Target giornaliero: {(dailyGoal / 1000).toFixed(1)} L
+          </span>
+          <span className="font-mono">
+            {summary.totalMl > 0 ? `${summary.activeDays} gg attivi` : 'Nessun log'}
+          </span>
+        </div>
       </CardContent>
     </Card>
   )

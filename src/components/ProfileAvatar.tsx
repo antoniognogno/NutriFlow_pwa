@@ -1,4 +1,5 @@
-import type { ProfileAvatarConfig } from '@/features/profile/avatarStore'
+import BoringAvatar from 'boring-avatars'
+import { BORING_PALETTES, type ProfileAvatarConfig } from '@/features/profile/avatarStore'
 
 const HAIR_PALETTE: Record<ProfileAvatarConfig['hairColor'], string> = {
   blonde: '#e5b94c',
@@ -37,10 +38,28 @@ export function ProfileAvatar({
   config: ProfileAvatarConfig
   className?: string
 }) {
+  const backdrop = BG_PALETTE[config.bgAccent]
+
+  if (config.renderMode === 'boring') {
+    return (
+      <span
+        className={`${className} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full`}
+        style={{ boxShadow: `0 0 0 2px ${backdrop.ring}` }}
+        aria-hidden="true"
+      >
+        <BoringAvatar
+          size="100%"
+          name={config.boringSeed || 'NutriFlow'}
+          variant={config.boringVariant ?? 'beam'}
+          colors={BORING_PALETTES[config.bgAccent]}
+        />
+      </span>
+    )
+  }
+
   const hair = HAIR_PALETTE[config.hairColor]
   const skin = SKIN_PALETTE[config.skinTone]
   const eyes = EYE_PALETTE[config.eyeColor]
-  const backdrop = BG_PALETTE[config.bgAccent]
 
   return (
     <svg
@@ -50,7 +69,6 @@ export function ProfileAvatar({
     >
       <circle cx="32" cy="32" r="31" fill={backdrop.bg} stroke={backdrop.ring} strokeWidth="2" />
 
-      {/* Back layer for long hair */}
       {config.hairStyle === 'long' && (
         <path
           d="M15 28 C14 14, 50 14, 49 28 L51 50 C44 54, 20 54, 13 50 Z"
@@ -64,16 +82,13 @@ export function ProfileAvatar({
         </>
       )}
 
-      {/* Shoulders / Shirt */}
       <path d="M12 60 C15 47, 49 47, 52 60 Z" fill={backdrop.ring} opacity="0.88" />
       <rect x="27" y="40" width="10" height="10" rx="4" fill={skin.shadow} />
 
-      {/* Ears & Head */}
       <circle cx="18.5" cy="31" r="3.4" fill={skin.shadow} />
       <circle cx="45.5" cy="31" r="3.4" fill={skin.shadow} />
       <rect x="19" y="17" width="26" height="28" rx="13" fill={skin.base} />
 
-      {/* Hair top layers */}
       {config.hairStyle === 'short' && (
         <path
           d="M18 27 C18 15, 46 15, 46 27 C43 21, 21 21, 18 27 Z"
@@ -96,11 +111,9 @@ export function ProfileAvatar({
         <path d="M18 26 C20 17, 44 17, 46 26 C40 22, 24 22, 18 26 Z" fill={hair} />
       )}
 
-      {/* Eyebrows */}
       <path d="M23 26 Q26 24.5 29 26" stroke={hair} strokeWidth="1.6" strokeLinecap="round" fill="none" />
       <path d="M35 26 Q38 24.5 41 26" stroke={hair} strokeWidth="1.6" strokeLinecap="round" fill="none" />
 
-      {/* Eyes with distinct iris color + highlight */}
       <circle cx="26" cy="30" r="2.7" fill="#ffffff" />
       <circle cx="38" cy="30" r="2.7" fill="#ffffff" />
       <circle cx="26" cy="30" r="1.75" fill={eyes} />
@@ -108,11 +121,9 @@ export function ProfileAvatar({
       <circle cx="26.5" cy="29.4" r="0.6" fill="#ffffff" />
       <circle cx="38.5" cy="29.4" r="0.6" fill="#ffffff" />
 
-      {/* Nose & Smile */}
       <path d="M32 30.5 L31 34.5 L33 35" stroke={skin.shadow} strokeWidth="1.3" strokeLinecap="round" fill="none" />
       <path d="M28 38 Q32 41 36 38" stroke="#8a4b43" strokeWidth="1.5" strokeLinecap="round" fill="none" />
 
-      {/* Beard options */}
       {config.beard === 'short' && (
         <path
           d="M20 34 C20 43, 44 43, 44 34 C43 40, 21 40, 20 34 Z"

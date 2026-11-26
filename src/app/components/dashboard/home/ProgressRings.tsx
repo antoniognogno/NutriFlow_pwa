@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { readCachedWaterState, sumWaterLogs } from '@/features/nutrition/waterOfflineCache'
 import { readCachedProfileSettings } from '@/features/routine/profileGoalsStore'
 import { readCachedSessions } from '@/features/workouts/workoutOfflineCache'
+import type { HomeDashboardSnapshot } from '@/features/dashboard/homeData'
 import { createClient } from '@/lib/supabase/client'
 import {
   clampRingPercent,
@@ -59,7 +60,7 @@ function Ring({ progress, label, value, colorClass }: RingProps) {
   )
 }
 
-export function ProgressRings() {
+export function ProgressRings({ sharedData }: { sharedData?: HomeDashboardSnapshot | null }) {
   const supabase = createClient()
   const [snapshot, setSnapshot] = useState<ProgressSnapshot>(() => {
     const startOfWeekIso = getStartOfWeekIso()
@@ -71,6 +72,16 @@ export function ProgressRings() {
       focusMinutesToday: 0,
     }
   })
+
+  useEffect(() => {
+    if (!sharedData) return
+    setSnapshot({
+      workoutsThisWeek: sharedData.sessionsThisWeek,
+      waterMlToday: sharedData.waterMlToday,
+      waterGoalMl: sharedData.waterGoalMl || DEFAULT_WATER_GOAL_ML,
+      focusMinutesToday: sharedData.focusMinutesToday,
+    })
+  }, [sharedData])
 
   const loadSnapshot = useCallback(async () => {
     const startOfWeekIso = getStartOfWeekIso()
@@ -87,6 +98,8 @@ export function ProgressRings() {
       }))
       return
     }
+
+    if (sharedData !== undefined) return
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -118,7 +131,7 @@ export function ProgressRings() {
     } catch (error) {
       console.error('Impossibile aggiornare i progressi reali:', error)
     }
-  }, [supabase])
+  }, [supabase, sharedData])
 
   useEffect(() => {
     void loadSnapshot()

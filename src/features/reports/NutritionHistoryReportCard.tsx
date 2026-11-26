@@ -1,11 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { useTheme } from 'next-themes'
-import { CalendarRange, Utensils } from 'lucide-react'
+import { CalendarRange, ChevronDown, ChevronUp, Utensils } from 'lucide-react'
+import { LightweightBarChart } from '@/components/ui/LightweightBarChart'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { chartColors } from '@/config/chartColors'
 import { readCachedMeals } from '@/features/nutrition/mealOfflineCache'
 import { createClient } from '@/lib/supabase/client'
 import { PeriodNavigator } from './PeriodNavigator'
@@ -22,14 +20,30 @@ interface NutritionHistoryReportCardProps {
   todayMealsCount: number
 }
 
+function formatMealWhen(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  const timeStr = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  if (isToday) return `Oggi · ${timeStr}`
+  const dateStr = d.toLocaleDateString('it-IT', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  })
+  return `${dateStr} · ${timeStr}`
+}
+
 export function NutritionHistoryReportCard({
   userId,
   calorieGoal,
   todayMealsCount,
 }: NutritionHistoryReportCardProps) {
   const supabase = useMemo(() => createClient(), [])
-  const { resolvedTheme } = useTheme()
-  const colors = resolvedTheme === 'light' ? chartColors.light : chartColors.dark
 
   const [period, setPeriod] = useState<FullReportPeriod>('week')
   const [offsets, setOffsets] = useState<Record<FullReportPeriod, number>>({
@@ -42,6 +56,7 @@ export function NutritionHistoryReportCard({
   })
   const [meals, setMeals] = useState<MealHistoryItem[]>(() => readCachedMeals())
   const [isLoading, setIsLoading] = useState(false)
+  const [showMealLog, setShowMealLog] = useState(true)
   const cacheRef = useRef<Map<string, MealHistoryItem[]>>(new Map())
 
   const currentOffset = offsets[period]
@@ -98,6 +113,26 @@ export function NutritionHistoryReportCard({
 
   const summary = useMemo(() => buildMealPeriodReport(meals, periodWindow), [meals, periodWindow])
 
+  const mealsInWindow = useMemo(() => {
+    return meals
+      .filter(m => {
+        const ms = new Date(m.logged_at).getTime()
+        return ms >= periodWindow.start.getTime() && ms < periodWindow.end.getTime()
+      })
+      .sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime())
+  }, [meals, periodWindow])
+
+  const chartData = useMemo(
+    () =>
+      summary.chartSeries.map(item => ({
+        label: item.label,
+        value: item.calories,
+        accent: item.calories > 0 && item.calories <= calorieGoal * 1.1,
+        secondaryText: `${item.protein}g P`,
+      })),
+    [summary.chartSeries, calorieGoal],
+  )
+
   return (
     <Card>
       <CardHeader className="space-y-3 pb-3">
@@ -153,73 +188,56 @@ export function NutritionHistoryReportCard({
         {isLoading ? (
           <p className="py-10 text-center text-xs text-muted-foreground">Caricamento report...</p>
         ) : (
-          <div className="h-[210px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary.chartSeries} margin={{ top: 8, right: 6, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
-                <XAxis
-                  dataKey="label"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  stroke={colors.text}
-                  interval={period === 'month' ? 4 : 0}
-                />
-                <YAxis
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  stroke={colors.text}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(122, 166, 189, 0.08)' }}
-                  contentStyle={{
-                    backgroundColor: colors.tooltipBg,
-                    borderColor: colors.tooltipBorder,
-                    color: colors.tooltipText,
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value: number) => [`${value.toLocaleString('it-IT')} kcal`, 'Calorie']}
-                />
-                <Bar dataKey="calories" radius={[4, 4, 0, 0]} maxBarSize={26}>
-                  {summary.chartSeries.map((entry, idx) => (
-                    <Cell
-                      key={`${entry.label}-${idx}`}
-                      fill={
-                        entry.calories > 0 && entry.calories <= calorieGoal * 1.1
-                          ? colors.barAccent
-                          : colors.bar
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <LightweightBarChart
+            data={chartData}
+            unit="kcal"
+            heightPx={185}
+            maxTicks={period === 'month' ? 6 : 8}
+            defaultTone="primary"
+            accentTone="emerald"
+          />
         )}
 
-        {period === 'day' && meals.length > 0 && (
-          <div className="space-y-1.5 border-t border-border/50 pt-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <div className="space-y-2 border-t border-border/50 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowMealLog(v => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <span className="flex items-center gap-1.5">
               <Utensils className="size-3.5 text-emerald-500" />
-              Pasti nel giorno selezionato ({meals.length})
-            </p>
-            <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
-              {meals.slice(0, 12).map(item => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-muted/35 px-2.5 py-1.5 text-xs dark:bg-[#111f2c]/70"
-                >
-                  <span className="truncate font-medium">{item.meal_name}</span>
-                  <span className="shrink-0 font-mono text-muted-foreground">
-                    {item.calories} kcal · {Math.round(item.protein_g)}P
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+              Cosa hai mangiato nel periodo ({mealsInWindow.length})
+            </span>
+            {showMealLog ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+          </button>
+
+          {showMealLog && (
+            mealsInWindow.length === 0 ? (
+              <p className="rounded-lg bg-muted/25 px-3 py-2.5 text-xs text-muted-foreground">
+                Nessun pasto registrato in questo intervallo.
+              </p>
+            ) : (
+              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                {mealsInWindow.slice(0, 60).map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border/40 bg-muted/35 px-2.5 py-2 text-xs dark:bg-[#111f2c]/70"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-foreground">{item.meal_name}</p>
+                      <p className="text-[10.5px] text-muted-foreground">
+                        {formatMealWhen(item.logged_at)} · {Math.round(item.protein_g)}P · {Math.round(item.carbs_g)}C · {Math.round(item.fats_g)}G
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-mono text-xs font-bold text-primary">
+                      {item.calories} kcal
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
       </CardContent>
     </Card>
   )

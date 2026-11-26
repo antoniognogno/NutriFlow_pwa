@@ -45,8 +45,10 @@ import {
   type MealLogItem as MealLog,
 } from './nutritionUtils'
 import {
+  LOCAL_COMMON_FOODS,
   type OpenFoodProduct,
   scaleNutrientsForGrams,
+  searchLocalFoods,
   searchOpenFoodFacts,
 } from './openFoodFacts'
 
@@ -70,11 +72,12 @@ export function NutritionView() {
     return computeMacroGoals(readBodyProfile(), getWeeklyWorkoutGoal())
   }, [goalsRevision])
 
-  // OpenFoodFacts search
+  // OpenFoodFacts + local autocomplete search
   const [foodQuery, setFoodQuery] = useState('')
   const [foodGrams, setFoodGrams] = useState('100')
   const [foodResults, setFoodResults] = useState<OpenFoodProduct[]>([])
   const [isSearchingFood, setIsSearchingFood] = useState(false)
+  const [foodSearchError, setFoodSearchError] = useState<string | null>(null)
 
   // Inline edit state for today's logged meals
   const [editingMealId, setEditingMealId] = useState<string | null>(null)
@@ -222,17 +225,97 @@ export function NutritionView() {
     setShowCustomForm(false)
   }
 
+  const mergeFoodSuggestions = useCallback(
+    (localMatches: OpenFoodProduct[], remoteMatches: OpenFoodProduct[]): OpenFoodProduct[] => {
+      const seen = new Set<string>()
+      const combined: OpenFoodProduct[] = []
+      for (const item of [...remoteMatches, ...localMatches]) {
+        const key = `${item.name.toLocaleLowerCase()}-${item.kcalPer100g}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        combined.push(item)
+      }
+      return combined.slice(0, 7)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    const clean = foodQuery.trim()
+    if (clean.length < 2) {
+      setFoodResults([])
+      setFoodSearchError(null)
+      setIsSearchingFood(false)
+      return
+    }
+
+    const localNow = searchLocalFoods(clean)
+    setFoodResults(localNow)
+    setFoodSearchError(null)
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return
+    }
+
+    const controller = new AbortController()
+    const timer = window.setTimeout(async () => {
+      setIsSearchingFood(true)
+      try {
+        const remote = await searchOpenFoodFacts(clean, controller.signal)
+        if (controller.signal.aborted) return
+        setFoodResults(mergeFoodSuggestions(localNow, remote))
+      } catch (err) {
+        if (controller.signal.aborted) return
+        const msg = err instanceof Error ? err.message : ''
+        if (msg.includes('Ricerca non valida')) {
+          setFoodSearchError(msg)
+        } else if (localNow.length === 0) {
+          setFoodSearchError('OpenFoodFacts momentaneamente lento o non raggiungibile.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsSearchingFood(false)
+      }
+    }, 450)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [foodQuery, mergeFoodSuggestions])
+
   const handleSearchOpenFood = async () => {
-    if (foodQuery.trim().length < 2 || isSearchingFood) return
+    const clean = foodQuery.trim()
+    if (clean.length < 2 || isSearchingFood) return
+    const localNow = searchLocalFoods(clean)
+    setFoodResults(localNow)
+    setFoodSearchError(null)
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.info(
+        localNow.length > 0
+          ? 'Sei offline: mostrati gli alimenti del catalogo locale.'
+          : 'Sei offline e l’alimento non è nel catalogo locale.',
+      )
+      return
+    }
+
     setIsSearchingFood(true)
     try {
-      const results = await searchOpenFoodFacts(foodQuery)
-      setFoodResults(results)
-      if (results.length === 0) {
+      const results = await searchOpenFoodFacts(clean)
+      const merged = mergeFoodSuggestions(localNow, results)
+      setFoodResults(merged)
+      if (merged.length === 0) {
         toast.info('Nessun alimento trovato su OpenFoodFacts.')
       }
-    } catch {
-      toast.error('Ricerca OpenFoodFacts non disponibile offline.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.includes('Ricerca non valida')) {
+        toast.error(msg)
+      } else if (localNow.length > 0) {
+        toast.info('OpenFoodFacts lento: mostrati i risultati dal catalogo locale.')
+      } else {
+        toast.error('OpenFoodFacts non ha risposto in tempo. Riprova o compila i macro sotto.')
+      }
     } finally {
       setIsSearchingFood(false)
     }
@@ -488,61 +571,109 @@ export function NutritionView() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-2.5">
-              <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_auto] gap-1.5">
-                <Input
-                  aria-label="Cerca alimento su OpenFoodFacts"
-                  placeholder="Cerca (es. Yogurt Greco, Avena)"
-                  value={foodQuery}
-                  onChange={e => setFoodQuery(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void handleSearchOpenFood()
-                    }
-                  }}
-                  className="h-9 min-w-0 text-xs"
-                />
-                <Input
-                  aria-label="Grammi"
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  value={foodGrams}
-                  onChange={e => setFoodGrams(e.target.value)}
-                  placeholder="g"
-                  className="h-9 text-center font-mono text-xs"
-                />
+            <div className="space-y-2 rounded-xl border border-border/70 bg-muted/30 p-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_5.75rem_auto] items-end gap-1.5">
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="food-search-input" className="text-[11px] font-semibold text-muted-foreground">
+                    Alimento (autocomplete live)
+                  </Label>
+                  <Input
+                    id="food-search-input"
+                    aria-label="Cerca alimento su OpenFoodFacts"
+                    placeholder="Es. Yogurt, Avena, Pollo..."
+                    value={foodQuery}
+                    onChange={e => setFoodQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void handleSearchOpenFood()
+                      }
+                    }}
+                    className="h-9 min-w-0 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="food-grams-input" className="text-[11px] font-semibold text-primary">
+                    Porzione (g)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="food-grams-input"
+                      aria-label="Grammi porzione"
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      value={foodGrams}
+                      onChange={e => setFoodGrams(e.target.value)}
+                      placeholder="100"
+                      className="h-9 pr-6 text-center font-mono text-xs"
+                    />
+                    <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 font-mono text-[11px] font-bold text-primary">
+                      g
+                    </span>
+                  </div>
+                </div>
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   disabled={isSearchingFood || foodQuery.trim().length < 2}
                   className="h-9 shrink-0 rounded-xl px-2.5 text-xs"
+                  aria-label="Cerca su OpenFoodFacts"
                   onClick={() => void handleSearchOpenFood()}
                 >
                   <Search className="size-3.5" />
                 </Button>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[10.5px] text-muted-foreground">
+                <span>
+                  {isSearchingFood
+                    ? 'Ricerca OpenFoodFacts in corso...'
+                    : `I suggerimenti calcolano i macro per ${Math.max(1, Number.parseFloat(foodGrams || '100') || 100)} g`}
+                </span>
+                {foodQuery.trim().length < 2 && (
+                  <button
+                    type="button"
+                    className="font-medium text-primary hover:underline"
+                    onClick={() => setFoodResults(LOCAL_COMMON_FOODS.slice(0, 5))}
+                  >
+                    Alimenti rapidi
+                  </button>
+                )}
+              </div>
+
+              {foodSearchError && (
+                <p className="text-[11px] text-amber-500">{foodSearchError}</p>
+              )}
+
               {foodResults.length > 0 && (
-                <div className="space-y-1">
-                  {foodResults.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => applyFoodProduct(item)}
-                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-emerald-500/40 bg-emerald-200 px-2.5 py-1.5 text-left text-xs font-medium text-slate-950 transition-colors hover:bg-emerald-300"
-                    >
-                      <span className="min-w-0 truncate">
-                        <strong>{item.name}</strong>
-                        {item.brand ? ` · ${item.brand}` : ''}
-                      </span>
-                      <span className="shrink-0 font-mono text-[11px] font-bold">
-                        {item.kcalPer100g} kcal/100g
-                      </span>
-                    </button>
-                  ))}
+                <div className="max-h-52 space-y-1 overflow-y-auto pr-0.5">
+                  {foodResults.map(item => {
+                    const gramsNum = Math.max(1, Number.parseFloat(foodGrams || '100') || 100)
+                    const preview = scaleNutrientsForGrams(item, gramsNum)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => applyFoodProduct(item)}
+                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-emerald-500/40 bg-emerald-200 px-2.5 py-1.5 text-left text-xs font-medium text-slate-950 transition-colors hover:bg-emerald-300"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate">
+                            <strong>{item.name}</strong>
+                            {item.brand ? ` · ${item.brand}` : ''}
+                          </p>
+                          <p className="truncate text-[10.5px] text-slate-700">
+                            {gramsNum}g: {preview.protein_g}P · {preview.carbs_g}C · {preview.fats_g}G
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-mono text-[11px] font-bold">
+                          {preview.calories} kcal
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>

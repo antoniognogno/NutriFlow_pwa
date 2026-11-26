@@ -6,7 +6,7 @@ import {
   DEFAULT_PRESETS,
   macroPercent,
 } from './nutritionUtils'
-import { scaleNutrientsForGrams } from './openFoodFacts'
+import { scaleNutrientsForGrams, searchLocalFoods } from './openFoodFacts'
 import {
   appendCachedWaterLog,
   clearCachedWaterLogs,
@@ -156,5 +156,8 @@ describe('Nutrition, Personalized Macros & OpenFoodFacts', () => {
 
     removeCachedMeal('meal-offline')
     expect(readCachedMeals().map(m => m.id)).toEqual(['meal-remote'])
+
+    expect(searchLocalFoods('yogurt')[0]?.name).toContain('Yogurt Greco')
+    expect(searchLocalFoods('pollo')[0]?.kcalPer100g).toBeGreaterThan(0)
   })
 })
