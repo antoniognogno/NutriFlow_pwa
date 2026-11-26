@@ -308,7 +308,7 @@ export function TodayWidget() {
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border bg-background/50 p-4" aria-labelledby="creatine-heading">
+        <section data-tour="home-today" className="rounded-xl border bg-background/50 p-4" aria-labelledby="creatine-heading">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="flex size-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">

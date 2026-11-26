@@ -1,20 +1,24 @@
 export const chartColors = {
   light: {
-    bar: "#2563eb",
-    line: "#2563eb",
-    grid: "#e5e7eb",
-    text: "#6b7280",
-    tooltipBg: "#ffffff",
-    tooltipBorder: "#e5e7eb",
-    tooltipText: "#030712"
+    bar: '#267491',
+    barAccent: '#059669',
+    line: '#267491',
+    lineAccent: '#059669',
+    grid: '#c9d7df',
+    text: '#607080',
+    tooltipBg: '#ffffff',
+    tooltipBorder: '#c9d7df',
+    tooltipText: '#18303d',
   },
   dark: {
-    bar: "#3b82f6",
-    line: "#3b82f6",
-    grid: "#2727a",
-    text: "#a1a1aa",
-    tooltipBg: "#09090b",
-    tooltipBorder: "#2727a",
-    tooltipText: "#f8fafc"
-  }
-};
+    bar: '#7aa6bd',
+    barAccent: '#34d399',
+    line: '#34d399',
+    lineAccent: '#7aa6bd',
+    grid: '#263845',
+    text: '#91a2ae',
+    tooltipBg: '#0d1722',
+    tooltipBorder: '#263845',
+    tooltipText: '#e2e8f0',
+  },
+}

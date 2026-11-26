@@ -17,8 +17,8 @@ interface WeeklyVolumeChartProps {
 
 export function WeeklyVolumeChart({ data }: WeeklyVolumeChartProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
-  const { theme } = useTheme();
-  const colors = theme === "dark" ? chartColors.dark : chartColors.light;
+  const { resolvedTheme } = useTheme();
+  const colors = resolvedTheme === "light" ? chartColors.light : chartColors.dark;
 
   const maxVolume = Math.max(...data.map(item => item.total_volume));
   const yAxisDomain = [0, Math.ceil((maxVolume * 1.1) / 100) * 100];

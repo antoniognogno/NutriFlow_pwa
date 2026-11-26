@@ -267,7 +267,6 @@ export default function GymPage() {
               Stats
             </Link>
           </Button>
-          {tab === 'allenamento' && <NewPlanDialog mode="create" onSaveSuccess={fetchGymData} />}
         </div>
       </div>
 
@@ -334,9 +333,12 @@ export default function GymPage() {
 
           {/* 1. Schede personalizzate dell'utente PRIMA */}
           <section aria-labelledby="db-plans-heading" className="space-y-2.5">
-            <h2 id="db-plans-heading" className="text-sm font-semibold text-muted-foreground">
-              Le mie schede personalizzate
-            </h2>
+            <div className="flex items-center justify-between gap-2" data-tour="gym-new-plan">
+              <h2 id="db-plans-heading" className="text-sm font-semibold text-muted-foreground">
+                Le mie schede personalizzate
+              </h2>
+              <NewPlanDialog mode="create" onSaveSuccess={fetchGymData} />
+            </div>
             {isLoading ? (
               <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
                 Caricamento schede personalizzate...

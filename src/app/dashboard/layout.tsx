@@ -10,6 +10,7 @@ import { UserControls } from '@/app/components/dashboard/userControls'
 import { ModeToggle } from '@/components/mode-toggle'
 import { useOfflineSync } from '@/features/offline/useOfflineSync'
 import { warmWorkoutOfflineCache } from '@/features/workouts/workoutOfflineCache'
+import { AppTourOverlay } from '@/features/tour/AppTourOverlay'
 
 function getBackDestination(pathname: string): { href: string; label: string } | null {
   if (/^\/dashboard\/gym\/plan(\/|$)/.test(pathname)) {
@@ -115,7 +116,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </span>
           </span>
           <ModeToggle />
-          <UserControls />
+          <div data-tour="header-profile" className="flex items-center">
+            <UserControls />
+          </div>
         </div>
       </header>
 
@@ -140,12 +143,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             : "mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 px-4 py-4 pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:gap-6 md:px-6 md:py-6 md:pb-8"
         }
       >
-        {children}
+        <div key={pathname} className="nf-page-enter flex flex-1 flex-col gap-4 md:gap-6">
+          {children}
+        </div>
       </main>
 
       <nav aria-label="Navigazione rapida" className="md:hidden">
         <NavLinks bottom />
       </nav>
+
+      <AppTourOverlay />
     </div>
   )
 }

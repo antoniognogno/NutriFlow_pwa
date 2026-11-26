@@ -1,25 +1,25 @@
 'use client'
 
-import HeatMap from '@uiw/react-heat-map';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useTheme } from 'next-themes';
-import { Tooltip as ReactTooltip } from 'recharts';
+import HeatMap from '@uiw/react-heat-map'
+import { useTheme } from 'next-themes'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 export interface HeatmapData {
-  date: string; // YYYY-MM-DD
-  count: number;
+  date: string
+  count: number
 }
 
 interface WorkoutHeatmapProps {
-  data: HeatmapData[];
+  data: HeatmapData[]
 }
 
 export function WorkoutHeatmap({ data }: WorkoutHeatmapProps) {
-  const { theme } = useTheme();
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - 5);
-  
-  const formattedData = data.map(item => ({...item, date: item.date.replace(/-/g, '/')}));
+  const { resolvedTheme } = useTheme()
+  const isLight = resolvedTheme === 'light'
+  const startDate = new Date()
+  startDate.setMonth(startDate.getMonth() - 5)
+
+  const formattedData = data.map(item => ({ ...item, date: item.date.replace(/-/g, '/') }))
 
   return (
     <Card>
@@ -30,21 +30,21 @@ export function WorkoutHeatmap({ data }: WorkoutHeatmapProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto pb-2 -ml-4">
+        <div className="overflow-x-auto pb-2 -ml-2">
           <HeatMap
             value={formattedData}
             startDate={startDate}
+            style={{ color: isLight ? '#607080' : '#91a2ae' }}
             panelColors={{
-              0: theme === 'dark' ? 'hsl(var(--muted) / 0.5)' : 'hsl(var(--muted))',
-              1: 'hsl(var(--primary))',
+              0: isLight ? '#e2e8f0' : '#162433',
+              1: isLight ? '#267491' : '#34d399',
+              2: isLight ? '#1d5b73' : '#10b981',
             }}
             rectProps={{ rx: 3 }}
             legendCellSize={0}
-            // La libreria Tooltip di Recharts non funziona bene qui,
-            // la libreria heatmap ha un suo tooltip di default (HTML title) che è sufficiente.
           />
         </div>
       </CardContent>
     </Card>
-  );
+  )
 }

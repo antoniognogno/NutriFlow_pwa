@@ -533,6 +533,7 @@ export default function WaterTrackerPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          <div className="space-y-4">
           <div className="space-y-2">
             <p className="text-center font-mono text-3xl font-bold text-primary sm:text-4xl">
               {totalToday.toLocaleString('it-IT')}
@@ -545,7 +546,7 @@ export default function WaterTrackerPage() {
 
           <div className="space-y-2">
             <p className="text-center text-xs font-medium text-muted-foreground">Aggiungi in 1 tap</p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div data-tour="water-controls" className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {presets.map(preset => {
                 const { Icon, color } = presetIcon(preset.kind);
                 return (
@@ -564,6 +565,7 @@ export default function WaterTrackerPage() {
                 );
               })}
             </div>
+          </div>
           </div>
 
           <form

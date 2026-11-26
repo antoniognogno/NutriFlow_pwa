@@ -16,7 +16,10 @@ export function RoutineView() {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 gap-1 rounded-2xl border border-border/60 bg-card/70 p-1">
+      <div
+        data-tour="routine-tabs"
+        className="grid grid-cols-2 gap-1 rounded-2xl border border-border/60 bg-card/70 p-1"
+      >
         <button
           type="button"
           onClick={() => setTab('habits')}

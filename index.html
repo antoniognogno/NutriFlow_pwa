@@ -4,13 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#070d14" />
-    <meta name="description" content="NutriFlow: organizza studio, allenamento e benessere." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="manifest" href="/manifest.json" />
+    <meta name="description" content="NutriFlow: organizza allenamento, idratazione, nutrizione e routine." />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/android/android-launchericon-192-192.png" />
+    <link rel="apple-touch-icon" href="/icons/ios/180.png" />
     <title>NutriFlow</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#070d14;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif"
+      >
+        <img
+          src="/icons/android/android-launchericon-192-192.png"
+          alt="NutriFlow"
+          width="84"
+          height="84"
+          style="border-radius:22px;box-shadow:0 0 28px rgba(52,211,153,0.28)"
+        />
+        <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em">NutriFlow</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

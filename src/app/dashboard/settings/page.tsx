@@ -2,7 +2,23 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Download, Droplets, Dumbbell, LogOut, Moon, Ruler, Scale, Sun, Target, User } from 'lucide-react'
+import {
+  Check,
+  Compass,
+  Download,
+  Droplets,
+  Dumbbell,
+  LogOut,
+  Moon,
+  RefreshCw,
+  Ruler,
+  Scale,
+  SlidersHorizontal,
+  Sun,
+  Target,
+  User,
+  X,
+} from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
@@ -28,6 +44,7 @@ import {
 } from '@/features/routine/profileGoalsStore'
 import { readWeightLogs, upsertWeightEntry } from '@/features/routine/weightStore'
 import { readTrashItems } from '@/features/trash/trashStore'
+import { requestAppTourStart } from '@/features/tour/tourStore'
 import { getWeeklyWorkoutGoal, saveWeeklyWorkoutGoal } from '@/app/components/dashboard/home/progressUtils'
 
 const WATER_GOAL_OPTIONS = [2000, 2500, 3000, 3500] as const
@@ -65,6 +82,9 @@ export default function SettingsPage() {
   const [dietType, setDietType] = useState(() => readCachedProfileSettings().diet_type)
   const [allergies, setAllergies] = useState(() => readCachedProfileSettings().allergies.join(', '))
   const [dislikedFoods, setDislikedFoods] = useState(() => readCachedProfileSettings().disliked_foods.join(', '))
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false)
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
+  const [updateStatusText, setUpdateStatusText] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -178,6 +198,7 @@ export default function SettingsPage() {
       if (!navigator.onLine) {
         await queueProfileSync()
         window.dispatchEvent(new Event('nutriflow:data-updated'))
+        setIsProfileEditorOpen(false)
         toast.success('Impostazioni salvate offline (verranno sincronizzate al ritorno della rete).')
         return
       }
@@ -186,11 +207,13 @@ export default function SettingsPage() {
       if (error) {
         await queueProfileSync()
         window.dispatchEvent(new Event('nutriflow:data-updated'))
+        setIsProfileEditorOpen(false)
         toast.success('Impostazioni salvate in locale (sync profilo in coda).')
         return
       }
 
       window.dispatchEvent(new Event('nutriflow:data-updated'))
+      setIsProfileEditorOpen(false)
       toast.success('Impostazioni salvate.')
     } catch (error) {
       console.error('Errore salvataggio impostazioni:', error)
@@ -220,6 +243,68 @@ export default function SettingsPage() {
     toast.success('Backup locale esportato.')
   }
 
+  const handleCheckUpdates = async () => {
+    if (isCheckingUpdate) return
+    if (!navigator.onLine) {
+      toast.warning('Connettiti a internet per cercare nuovi aggiornamenti.')
+      return
+    }
+    setIsCheckingUpdate(true)
+    const nowTime = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+    try {
+      if (!('serviceWorker' in navigator)) {
+        setUpdateStatusText(`Controllato alle ${nowTime} · nessuna nuova versione`)
+        toast.info('NutriFlow è già aggiornato all’ultima versione.')
+        return
+      }
+
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (!registration) {
+        setUpdateStatusText(`Controllato alle ${nowTime} · versione corrente attiva`)
+        toast.info('Nessun aggiornamento in sospeso.')
+        return
+      }
+
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+        setUpdateStatusText('Aggiornamento trovato: riavvio...')
+        toast.success('Aggiornamento disponibile! Ricarico NutriFlow...')
+        window.setTimeout(() => window.location.reload(), 650)
+        return
+      }
+
+      await registration.update()
+      const waitingAfterUpdate = registration.waiting as ServiceWorker | null
+      const installingAfterUpdate = registration.installing as ServiceWorker | null
+      if (waitingAfterUpdate) {
+        toast.success('Nuova versione rilevata! Applico aggiornamento...')
+        setUpdateStatusText('Aggiornamento in applicazione...')
+        waitingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
+        window.setTimeout(() => window.location.reload(), 650)
+        return
+      }
+      if (installingAfterUpdate) {
+        toast.success('Nuova versione rilevata! Applico aggiornamento...')
+        setUpdateStatusText('Aggiornamento in applicazione...')
+        installingAfterUpdate.addEventListener('statechange', () => {
+          if (installingAfterUpdate.state === 'installed') {
+            installingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
+            window.setTimeout(() => window.location.reload(), 650)
+          }
+        })
+        return
+      }
+
+      setUpdateStatusText(`Controllato alle ${nowTime} · app già aggiornata`)
+      toast.success('NutriFlow è già aggiornato all’ultima versione!')
+    } catch {
+      setUpdateStatusText(`Verifica completata alle ${nowTime}`)
+      toast.info('Nessun aggiornamento disponibile al momento.')
+    } finally {
+      setIsCheckingUpdate(false)
+    }
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -241,18 +326,82 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <form onSubmit={e => void handleSave(e)} className="space-y-4">
-        <Card>
+      {!isProfileEditorOpen ? (
+        <Card className="nf-pop-enter" data-tour="settings-profile-card">
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <User className="size-4 text-primary" />
-              Profilo & Obiettivi
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Personalizza nome e target giornalieri/settimanali
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <User className="size-4 text-primary" />
+                  Profilo & Obiettivi
+                </CardTitle>
+                <CardDescription className="mt-0.5 text-xs">
+                  {username.trim() || 'Atleta'} · {(waterGoalMl / 1000).toFixed(1)}L acqua · {weeklyWorkoutGoal}× allenamenti/sett
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIsProfileEditorOpen(true)}
+                className="h-9 shrink-0 rounded-xl border-primary/40 bg-primary/10 px-3 text-xs text-primary hover:bg-primary/20"
+              >
+                <SlidersHorizontal className="mr-1.5 size-3.5" />
+                Personalizza
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex flex-wrap gap-2 pt-0 text-xs">
+            {weightKgInput && (
+              <span className="rounded-lg bg-muted/60 px-2.5 py-1 font-mono text-foreground">
+                Peso: {weightKgInput} kg
+              </span>
+            )}
+            {targetWeightInput && (
+              <span className="rounded-lg bg-emerald-500/15 px-2.5 py-1 font-mono text-emerald-700 dark:text-emerald-400">
+                Target: {targetWeightInput} kg
+              </span>
+            )}
+            {heightCmInput && (
+              <span className="rounded-lg bg-muted/60 px-2.5 py-1 font-mono text-muted-foreground">
+                {heightCmInput} cm
+              </span>
+            )}
+            {dietType.trim() && (
+              <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-primary">
+                {dietType.trim()}
+              </span>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <form onSubmit={e => void handleSave(e)} className="nf-pop-enter space-y-4">
+          <Card className="border-primary/35">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <User className="size-4 text-primary" />
+                    Personalizza profilo & obiettivi
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Personalizza nome e target giornalieri/settimanali
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsProfileEditorOpen(false)}
+                  aria-label="Chiudi personalizzazione profilo"
+                  className="h-8 rounded-xl px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="mr-1 size-3.5" />
+                  Chiudi
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="settings-username">Nome visualizzato</Label>
               <Input
@@ -463,17 +612,28 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              disabled={isSaving}
-              className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
-            >
-              <Check className="mr-1.5 size-4" />
-              {isSaving ? 'Salvataggio...' : 'Salva impostazioni'}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsProfileEditorOpen(false)}
+                className="h-11 rounded-xl px-4"
+              >
+                Chiudi
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSaving}
+                className="h-11 flex-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
+              >
+                <Check className="mr-1.5 size-4" />
+                {isSaving ? 'Salvataggio...' : 'Salva e chiudi'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </form>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
@@ -504,12 +664,47 @@ export default function SettingsPage() {
           <Button
             type="button"
             variant="outline"
-            className="h-10 w-full rounded-xl border-primary/40 text-xs text-primary hover:bg-primary/10"
+            className="h-auto min-h-10 w-full whitespace-normal rounded-xl border-primary/40 px-3 py-2 text-center text-xs text-primary hover:bg-primary/10"
             onClick={handleExportBackup}
           >
-            <Download className="mr-1.5 size-4" />
+            <Download className="mr-1.5 size-4 shrink-0" />
             Esporta backup locale (Routine, Peso, Cestino)
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Tutorial & Aggiornamenti</CardTitle>
+          <CardDescription className="text-xs">
+            Rivedi le funzioni principali dell’app o controlla nuove versioni PWA
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2.5">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full rounded-xl border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400"
+            onClick={requestAppTourStart}
+          >
+            <Compass className="mr-1.5 size-4" />
+            Avvia tutorial rapido dell’app
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isCheckingUpdate}
+            className="h-10 w-full rounded-xl border-sky-500/40 bg-sky-500/10 text-xs text-sky-700 hover:bg-sky-500/20 dark:text-sky-400"
+            onClick={() => void handleCheckUpdates()}
+          >
+            <RefreshCw className={`mr-1.5 size-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+            {isCheckingUpdate ? 'Controllo aggiornamenti...' : 'Cerca aggiornamenti'}
+          </Button>
+
+          {updateStatusText && (
+            <p className="text-center text-[11px] text-muted-foreground">{updateStatusText}</p>
+          )}
         </CardContent>
       </Card>
 

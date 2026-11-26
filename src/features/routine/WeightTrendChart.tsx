@@ -1,7 +1,9 @@
 'use client'
 
+import { useTheme } from 'next-themes'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { chartColors } from '@/config/chartColors'
 import { buildWeightChartSeries, type WeightEntry } from './weightStore'
 
 interface WeightTrendChartProps {
@@ -10,6 +12,8 @@ interface WeightTrendChartProps {
 }
 
 export function WeightTrendChart({ entries, targetWeightKg = null }: WeightTrendChartProps) {
+  const { resolvedTheme } = useTheme()
+  const colors = resolvedTheme === 'light' ? chartColors.light : chartColors.dark
   const series = buildWeightChartSeries(entries, 14)
 
   if (series.length === 0) {
@@ -38,13 +42,14 @@ export function WeightTrendChart({ entries, targetWeightKg = null }: WeightTrend
       <CardContent className="pl-0 sm:pl-2">
         <ResponsiveContainer width="100%" height={230}>
           <LineChart data={series} margin={{ top: 10, right: 14, bottom: 0, left: -12 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#263845" />
-            <XAxis dataKey="dateLabel" fontSize={11} tickLine={false} axisLine={false} stroke="#91a2ae" />
-            <YAxis domain={[minVal, maxVal]} fontSize={11} tickLine={false} axisLine={false} stroke="#91a2ae" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
+            <XAxis dataKey="dateLabel" fontSize={11} tickLine={false} axisLine={false} stroke={colors.text} />
+            <YAxis domain={[minVal, maxVal]} fontSize={11} tickLine={false} axisLine={false} stroke={colors.text} />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#0d1722',
-                borderColor: '#263845',
+                backgroundColor: colors.tooltipBg,
+                borderColor: colors.tooltipBorder,
+                color: colors.tooltipText,
                 borderRadius: '12px',
                 fontSize: '12px',
               }}
@@ -53,28 +58,28 @@ export function WeightTrendChart({ entries, targetWeightKg = null }: WeightTrend
               type="monotone"
               dataKey="weightKg"
               name="Peso (kg)"
-              stroke="#91a2ae"
+              stroke={colors.text}
               strokeWidth={1.5}
               strokeDasharray="4 4"
-              dot={{ r: 3 }}
+              dot={{ r: 3, fill: colors.text }}
             />
             <Line
               type="monotone"
               dataKey="avg7d"
               name="Media 7g (kg)"
-              stroke="#7aa6bd"
+              stroke={colors.lineAccent}
               strokeWidth={2.5}
               dot={false}
             />
             {targetWeightKg !== null && (
               <ReferenceLine
                 y={targetWeightKg}
-                stroke="#34d399"
+                stroke={colors.barAccent}
                 strokeDasharray="6 4"
                 label={{
                   value: `Obiettivo ${targetWeightKg}kg`,
                   position: 'insideTopRight',
-                  fill: '#34d399',
+                  fill: colors.barAccent,
                   fontSize: 10,
                 }}
               />

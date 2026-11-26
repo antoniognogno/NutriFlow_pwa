@@ -117,7 +117,7 @@ export default function DashboardPage() {
         <GamificationCard />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2" data-tour="home-progress">
             <ProgressRings />
           </div>
           <div className="lg:col-span-1">

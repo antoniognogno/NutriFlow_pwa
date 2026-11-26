@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Award, CheckCircle2, Circle, Flame, Snowflake, Sparkles, Trophy } from 'lucide-react'
+import { Award, CheckCircle2, Circle, Flame, Snowflake, Target, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -175,7 +175,7 @@ export function GamificationCard() {
 
         <div className="flex items-center justify-between text-xs">
           <span className="flex items-center gap-1 font-semibold text-muted-foreground">
-            <Sparkles className="size-3.5 text-primary" />
+            <Target className="size-3.5 text-primary" />
             Missioni ({summary.todayQuestsDone}/{summary.todayQuestsTotal})
           </span>
           <span className="font-mono text-muted-foreground">

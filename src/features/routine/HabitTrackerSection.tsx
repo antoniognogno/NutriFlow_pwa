@@ -14,7 +14,6 @@ import {
   ListChecks,
   Pencil,
   Plus,
-  Sparkles,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -614,8 +613,8 @@ export function HabitTrackerSection() {
 
               {report.bestHabit && (
                 <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs">
-                  <span className="flex min-w-0 items-center gap-1.5 font-medium text-emerald-300">
-                    <Sparkles className="size-3.5 shrink-0" />
+                  <span className="flex min-w-0 items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-300">
+                    <Flame className="size-3.5 shrink-0" />
                     <span className="truncate">Top: {report.bestHabit.label}</span>
                   </span>
                   <span className="shrink-0 font-mono font-bold text-emerald-300">

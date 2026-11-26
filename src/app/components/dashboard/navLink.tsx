@@ -48,6 +48,7 @@ export function NavLinks({ onLinkClick, bottom = false }: NavLinksProps) {
 
   return (
     <div
+      data-tour="app-nav-bar"
       className={cn(
         bottom
           ? "fixed inset-x-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-1 rounded-[22px] border border-white/10 bg-card/85 p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-2xl md:hidden"

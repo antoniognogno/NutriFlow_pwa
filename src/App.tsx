@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { TransitionProvider } from '@/app/context/TransitionContext'
+import { NutriFlowLogo } from '@/components/NutriFlowLogo'
 import DashboardLayout from '@/app/dashboard/layout'
 import DashboardPage from '@/app/dashboard/page'
 import LoginPage from '@/app/login/page'
@@ -81,8 +82,17 @@ function ProtectedRoute() {
 
 function PageLoading() {
   return (
-    <div className="flex min-h-[50vh] items-center justify-center" role="status">
-      <span className="text-sm text-muted-foreground">Caricamento...</span>
+    <div className="flex min-h-[75dvh] flex-col items-center justify-center gap-4 px-6" role="status">
+      <div className="nf-splash-logo rounded-[22%]">
+        <NutriFlowLogo className="size-20" />
+      </div>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <span className="text-lg font-bold tracking-tight">NutriFlow</span>
+        <div className="h-1 w-28 overflow-hidden rounded-full bg-muted">
+          <div className="nf-splash-bar h-full w-1/2 rounded-full bg-gradient-to-r from-sky-400 to-emerald-400" />
+        </div>
+        <span className="text-xs text-muted-foreground">Caricamento in corso...</span>
+      </div>
     </div>
   )
 }

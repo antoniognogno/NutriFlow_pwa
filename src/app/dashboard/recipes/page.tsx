@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ChefHat, Sparkles } from 'lucide-react'
+import { ArrowLeft, ChefHat, Clock3 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ export default function RecipesPage() {
             <ChefHat className="size-6" />
           </div>
           <Badge variant="secondary" className="mb-1 gap-1">
-            <Sparkles className="size-3" />
+            <Clock3 className="size-3" />
             Coming soon
           </Badge>
           <CardTitle className="text-xl">Generatore Ricette AI</CardTitle>

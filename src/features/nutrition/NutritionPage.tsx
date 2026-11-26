@@ -422,7 +422,7 @@ export function NutritionView() {
         </Button>
       </div>
 
-      <Card>
+      <Card data-tour="nutrition-summary">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>

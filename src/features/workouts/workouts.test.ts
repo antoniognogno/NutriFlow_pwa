@@ -13,6 +13,12 @@ import {
   isCardioSession,
 } from './workoutUtils'
 import {
+  buildHeatmapFromSessions,
+  buildPersonalRecords,
+  buildStatsSummary,
+  filterByRecentDays,
+} from './statsUtils'
+import {
   findCuratedGuide,
   findSameMuscleAlternatives,
   hasExercisePhotoMatch,
@@ -282,5 +288,39 @@ describe('Workouts & Cardio Module', () => {
 
     removeCachedPlan('plan-offline-2')
     expect(findCachedPlan('plan-offline-2')).toBeUndefined()
+  })
+
+  it('computes detailed workout stats, personal records, heatmap, and window filters', () => {
+    const now = new Date('2026-11-26T12:00:00Z')
+    const sessions = [
+      { id: 's1', workout_id: 'wk-1', workout_name: 'Spinta', duration_seconds: 2400, started_at: '2026-11-25T10:00:00Z' },
+      { id: 's2', workout_id: null, workout_name: 'Corsa 5 km (5:30/km)', duration_seconds: 1650, started_at: '2026-11-25T18:00:00Z' },
+      { id: 's3', workout_id: 'wk-2', workout_name: 'Gambe', duration_seconds: 3000, started_at: '2026-09-10T10:00:00Z' },
+    ]
+    const sets = [
+      { session_id: 's1', exercise_name: 'Panca Piana', reps: 8, weight_kg: 80, completed_at: '2026-11-25T10:15:00Z' },
+      { session_id: 's1', exercise_name: 'Panca Piana', reps: 6, weight_kg: 85, completed_at: '2026-11-25T10:20:00Z' },
+      { session_id: 's3', exercise_name: 'Squat', reps: 5, weight_kg: 110, completed_at: '2026-09-10T10:20:00Z' },
+    ]
+
+    const prs = buildPersonalRecords(sets)
+    expect(prs.map(p => p.exerciseName)).toEqual(['Squat', 'Panca Piana'])
+    expect(prs[1].bestWeightKg).toBe(85)
+    expect(prs[1].totalSets).toBe(2)
+
+    const summary = buildStatsSummary(sessions, sets)
+    expect(summary.totalSessions).toBe(3)
+    expect(summary.strengthSessions).toBe(2)
+    expect(summary.cardioSessions).toBe(1)
+    expect(summary.totalVolumeKg).toBe(80 * 8 + 85 * 6 + 110 * 5)
+
+    const heatmap = buildHeatmapFromSessions(sessions)
+    expect(heatmap).toEqual([
+      { date: '2026-09-10', count: 1 },
+      { date: '2026-11-25', count: 2 },
+    ])
+
+    const last28 = filterByRecentDays(sessions, s => s.started_at, 28, now)
+    expect(last28.map(s => s.id)).toEqual(['s1', 's2'])
   })
 })

@@ -1,9 +1,9 @@
 {
   "name": "NutriFlow",
   "short_name": "NutriFlow",
-  "description": "Il tuo assistente personale per il benessere e la nutrizione.",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "description": "Il tuo assistente personale per allenamento, nutrizione e benessere.",
+  "background_color": "#070d14",
+  "theme_color": "#070d14",
   "display": "standalone",
   "orientation": "portrait",
   "start_url": "/",
@@ -19,7 +19,7 @@
       "src": "/icons/android/android-launchericon-512-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }

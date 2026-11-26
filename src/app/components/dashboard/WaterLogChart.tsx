@@ -44,7 +44,7 @@ export function WaterLogChart() {
   });
   
   const isMobile = useMediaQuery("(max-width: 640px)");
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function WaterLogChart() {
     return () => window.removeEventListener('nutriflow:data-updated', refreshChart);
   }, [mutate]);
 
-  const colors = theme === "dark" ? chartColors.dark : chartColors.light;
+  const colors = resolvedTheme === "light" ? chartColors.light : chartColors.dark;
   
   const filteredData = useMemo(() => {
       return data?.filter(item => item.ml > 0) || [];

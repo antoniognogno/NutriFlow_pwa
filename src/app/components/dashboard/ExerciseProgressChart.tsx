@@ -18,8 +18,8 @@ interface ExerciseProgressChartProps {
 
 export function ExerciseProgressChart({ data, exerciseName }: ExerciseProgressChartProps) {
   const isMobile = useMediaQuery("(max-width: 768px)")
-  const { theme } = useTheme();
-  const colors = theme === "dark" ? chartColors.dark : chartColors.light;
+  const { resolvedTheme } = useTheme();
+  const colors = resolvedTheme === "light" ? chartColors.light : chartColors.dark;
 
 
   return (

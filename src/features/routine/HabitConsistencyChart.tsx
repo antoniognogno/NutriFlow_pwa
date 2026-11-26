@@ -1,6 +1,8 @@
 'use client'
 
+import { useTheme } from 'next-themes'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { chartColors } from '@/config/chartColors'
 import type { ChartBucket, ReportPeriod } from './habitStore'
 
 interface HabitConsistencyChartProps {
@@ -9,6 +11,9 @@ interface HabitConsistencyChartProps {
 }
 
 export function HabitConsistencyChart({ data, period }: HabitConsistencyChartProps) {
+  const { resolvedTheme } = useTheme()
+  const colors = resolvedTheme === 'light' ? chartColors.light : chartColors.dark
+
   if (data.length === 0) return null
 
   return (
@@ -23,13 +28,13 @@ export function HabitConsistencyChart({ data, period }: HabitConsistencyChartPro
       <div className="h-[175px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 6, bottom: 0, left: -24 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#263845" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
             <XAxis
               dataKey="label"
               fontSize={10}
               tickLine={false}
               axisLine={false}
-              stroke="#91a2ae"
+              stroke={colors.text}
               interval={0}
             />
             <YAxis
@@ -39,13 +44,14 @@ export function HabitConsistencyChart({ data, period }: HabitConsistencyChartPro
               fontSize={10}
               tickLine={false}
               axisLine={false}
-              stroke="#91a2ae"
+              stroke={colors.text}
             />
             <Tooltip
               cursor={{ fill: 'rgba(122, 166, 189, 0.08)' }}
               contentStyle={{
-                backgroundColor: '#0d1722',
-                borderColor: '#263845',
+                backgroundColor: colors.tooltipBg,
+                borderColor: colors.tooltipBorder,
+                color: colors.tooltipText,
                 borderRadius: '12px',
                 fontSize: '12px',
               }}
@@ -63,12 +69,12 @@ export function HabitConsistencyChart({ data, period }: HabitConsistencyChartPro
                   key={`${entry.label}-${idx}`}
                   fill={
                     entry.pct >= 80
-                      ? '#34d399'
+                      ? colors.barAccent
                       : entry.pct >= 40
-                        ? '#7aa6bd'
+                        ? colors.bar
                         : entry.pct > 0
                           ? '#f59e0b'
-                          : '#263845'
+                          : colors.grid
                   }
                 />
               ))}
