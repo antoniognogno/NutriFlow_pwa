@@ -34,7 +34,7 @@ function getBackDestination(pathname: string): { href: string; label: string } |
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { isOnline, pendingCount } = useOfflineSync()
+  const { isOnline, pendingCount, retryNow } = useOfflineSync()
   const backTarget = getBackDestination(pathname)
   const isWorkoutSession =
     /^\/dashboard\/gym\/[^/]+$/.test(pathname) &&
@@ -58,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl md:px-6">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border/40 bg-background/95 px-4 backdrop-blur-sm md:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
           {backTarget ? (
             isWorkoutSession ? (
@@ -92,17 +92,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <span
-            role="status"
+          <button
+            type="button"
+            onClick={() => void retryNow()}
             aria-live="polite"
             title={
               !isOnline
                 ? 'Offline: salvataggio locale attivo'
                 : pendingCount > 0
-                  ? `${pendingCount} elementi in coda di sincronizzazione`
+                  ? `${pendingCount} elementi in coda · tocca per sincronizzare`
                   : 'Connesso e sincronizzato'
             }
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition-transform active:scale-95 ${
               !isOnline
                 ? 'border-amber-400 bg-amber-300 text-amber-950'
                 : pendingCount > 0
@@ -114,7 +115,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span>
               {!isOnline ? 'Offline' : pendingCount > 0 ? `${pendingCount}` : 'Online'}
             </span>
-          </span>
+          </button>
           <ModeToggle />
           <div data-tour="header-profile" className="flex items-center">
             <UserControls />

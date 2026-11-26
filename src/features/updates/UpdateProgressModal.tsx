@@ -23,6 +23,7 @@ export interface UpdateProgressModalProps {
   stepLabel: string
   evaluation: RestartEvaluation | null
   errorMessage?: string | null
+  isRestarting?: boolean
   onRestartNow: () => void
   onClose: () => void
 }
@@ -38,6 +39,7 @@ export function UpdateProgressModal({
   stepLabel,
   evaluation,
   errorMessage,
+  isRestarting = false,
   onRestartNow,
   onClose,
 }: UpdateProgressModalProps) {
@@ -125,15 +127,10 @@ export function UpdateProgressModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="nf-update-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden overscroll-none touch-none bg-background/85 px-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden overscroll-none touch-none bg-black/70 px-4"
     >
       <div className="nf-pop-enter relative w-full max-w-sm overflow-hidden rounded-3xl border border-border/80 bg-card p-6 text-card-foreground shadow-2xl">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 left-1/2 h-48 w-64 -translate-x-1/2 rounded-full bg-gradient-to-tr from-emerald-500/20 via-sky-500/15 to-transparent blur-2xl"
-        />
-
-        {!isWorking && (
+        {!isWorking && !isRestarting && (
           <button
             type="button"
             aria-label="Chiudi finestra aggiornamento"
@@ -145,16 +142,16 @@ export function UpdateProgressModal({
         )}
 
         <div className="relative flex flex-col items-center text-center">
-          <div className="relative mb-4 flex size-24 items-center justify-center">
-            {isWorking && (
+          <div className="relative mb-4 flex size-20 items-center justify-center">
+            {(isWorking || isRestarting) && (
               <div
                 aria-hidden="true"
-                className="absolute inset-0 animate-spin rounded-[28%] border-2 border-transparent border-t-emerald-400 border-r-sky-400/70"
-                style={{ animationDuration: '1.6s' }}
+                className="absolute inset-0 animate-spin rounded-[28%] border-2 border-transparent border-t-emerald-400 border-r-sky-400/75"
+                style={{ animationDuration: '1s' }}
               />
             )}
-            <div className={isWorking ? 'nf-splash-logo rounded-[24%]' : 'rounded-[24%]'}>
-              <NutriFlowLogo className="size-16" />
+            <div className={isWorking || isRestarting ? 'nf-splash-logo rounded-[24%]' : 'rounded-[24%]'}>
+              <NutriFlowLogo className="size-15" />
             </div>
           </div>
 
@@ -199,13 +196,13 @@ export function UpdateProgressModal({
               className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted"
             >
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-400 transition-[width] duration-300 ease-out"
-                style={{ width: `${safeProgress}%` }}
+                className="h-full w-full origin-left rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-400 transition-transform duration-150 ease-out will-change-transform"
+                style={{ transform: `scaleX(${safeProgress / 100})` }}
               />
               {isWorking && (
                 <div
                   aria-hidden="true"
-                  className="nf-splash-bar absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                  className="nf-splash-bar absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/35 to-transparent"
                 />
               )}
             </div>
@@ -231,25 +228,30 @@ export function UpdateProgressModal({
               <>
                 <Button
                   type="button"
+                  disabled={isRestarting}
                   onClick={onRestartNow}
                   className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
                 >
-                  <RefreshCw className="mr-1.5 size-4" />
-                  {countdown !== null && !autoRestartPaused
-                    ? `Riavvia ora (${countdown}s)`
-                    : 'Riavvia app ora'}
+                  <RefreshCw className={`mr-1.5 size-4 ${isRestarting ? 'animate-spin' : ''}`} />
+                  {isRestarting
+                    ? 'Riavvio in corso...'
+                    : countdown !== null && !autoRestartPaused
+                      ? `Riavvia ora (${countdown}s)`
+                      : 'Riavvia app ora'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setAutoRestartPaused(true)
-                    onClose()
-                  }}
-                  className="h-10 w-full rounded-xl text-xs"
-                >
-                  Riavvia più tardi
-                </Button>
+                {!isRestarting && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAutoRestartPaused(true)
+                      onClose()
+                    }}
+                    className="h-10 w-full rounded-xl text-xs"
+                  >
+                    Riavvia più tardi
+                  </Button>
+                )}
               </>
             )}
 

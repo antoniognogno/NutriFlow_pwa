@@ -1,11 +1,26 @@
 import { liveQuery } from 'dexie'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createClient } from '@/lib/supabase/client'
+import { createClient, getSessionWithTimeout, readStoredSupabaseSession } from '@/lib/supabase/client'
 import { flushDirtyCloudState, pullCloudStateIfNewer } from './cloudStateSync'
 import { enqueueUpsert, offlineDatabase, type OutboxInput } from './database'
 
+export const MAX_OUTBOX_ATTEMPTS = 5
 let syncInProgress = false
+
+export function isPermanentSyncError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const err = error as { code?: unknown; status?: unknown; message?: unknown }
+  const code = typeof err.code === 'string' ? err.code : ''
+  const status = typeof err.status === 'number' ? err.status : 0
+  if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+    return true
+  }
+  if (/^(22|23|42501|42703|42P01|PGRST)/.test(code)) {
+    return true
+  }
+  return false
+}
 
 async function syncItem(supabase: ReturnType<typeof createClient>, item: OutboxInput) {
   switch (item.table) {
@@ -165,6 +180,26 @@ async function syncItem(supabase: ReturnType<typeof createClient>, item: OutboxI
   }
 }
 
+async function resolveSyncUserId(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  const stored = readStoredSupabaseSession()
+  try {
+    if (typeof supabase.auth?.getSession === 'function') {
+      const { session } = await getSessionWithTimeout(supabase, 3000)
+      if (session?.user?.id) return session.user.id
+    } else if (typeof supabase.auth?.getUser === 'function') {
+      const { data, error } = await supabase.auth.getUser()
+      if (error) throw error
+      if (data?.user?.id) return data.user.id
+    }
+  } catch (error) {
+    if (stored?.user?.id) return stored.user.id
+    throw error
+  }
+  return stored?.user?.id ?? null
+}
+
 export async function syncPendingChanges(
   supabase: ReturnType<typeof createClient> = createClient(),
 ): Promise<number> {
@@ -173,25 +208,35 @@ export async function syncPendingChanges(
   let syncedCount = 0
 
   try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError) throw authError
-    if (!user) return 0
+    const userId = await resolveSyncUserId(supabase)
+    if (!userId) return 0
 
     const queued = await offlineDatabase.outbox
       .where('userId')
-      .equals(user.id)
+      .equals(userId)
       .sortBy('createdAt')
 
     for (const item of queued) {
+      if (item.attempts >= MAX_OUTBOX_ATTEMPTS) {
+        console.warn(`Rimozione elemento outbox bloccato dopo ${item.attempts} tentativi:`, item.id)
+        await offlineDatabase.outbox.delete(item.id)
+        continue
+      }
       try {
         const { error } = await syncItem(supabase, item)
         if (error) throw error
         await offlineDatabase.outbox.delete(item.id)
         syncedCount += 1
       } catch (error) {
+        const nextAttempts = item.attempts + 1
+        if (isPermanentSyncError(error) || nextAttempts >= MAX_OUTBOX_ATTEMPTS) {
+          console.warn(`Elemento outbox non recuperabile rimosso (${item.table}/${item.id}):`, error)
+          await offlineDatabase.outbox.delete(item.id)
+          continue
+        }
         const message = error instanceof Error ? error.message : 'Errore di sincronizzazione sconosciuto.'
         await offlineDatabase.outbox.update(item.id, {
-          attempts: item.attempts + 1,
+          attempts: nextAttempts,
           lastError: message,
         })
         console.error(`Sincronizzazione offline fallita (${item.table}/${item.id}):`, error)
@@ -279,7 +324,30 @@ export function useOfflineSync() {
     }
   }, [])
 
-  return { isOnline, pendingCount, lastError }
+  const retryNow = async () => {
+    if (!navigator.onLine) {
+      toast.warning(`Sei offline · ${pendingCount} elementi in coda locale.`)
+      return
+    }
+    try {
+      const synced = await syncPendingChanges()
+      const remaining = await offlineDatabase.outbox.count()
+      setPendingCount(remaining)
+      if (remaining === 0) {
+        toast.success(
+          synced > 0
+            ? 'Sincronizzazione completata: tutto aggiornato!'
+            : 'Connesso e sincronizzato.',
+        )
+      } else {
+        toast.info(`Rimangono ${remaining} elementi in attesa di sincronizzazione.`)
+      }
+    } catch {
+      toast.error('Sincronizzazione non riuscita al momento.')
+    }
+  }
+
+  return { isOnline, pendingCount, lastError, retryNow }
 }
 
 export async function queueAndSync(item: OutboxInput): Promise<void> {

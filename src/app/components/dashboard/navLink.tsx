@@ -51,8 +51,8 @@ export function NavLinks({ onLinkClick, bottom = false }: NavLinksProps) {
       data-tour="app-nav-bar"
       className={cn(
         bottom
-          ? "fixed inset-x-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-1 rounded-[22px] border border-white/10 bg-card/85 p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-2xl md:hidden"
-          : "flex items-center gap-1 rounded-full border border-border/60 bg-card/70 p-1 backdrop-blur-md",
+          ? "fixed inset-x-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-md items-center justify-between gap-1 rounded-[22px] border border-white/10 bg-card/95 p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.38)] backdrop-blur-sm md:hidden"
+          : "flex items-center gap-1 rounded-full border border-border/60 bg-card/90 p-1 backdrop-blur-sm",
       )}
     >
       {NAV_ITEMS.map((link) => {

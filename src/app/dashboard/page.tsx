@@ -87,7 +87,7 @@ export default function DashboardPage() {
     (DEFAULT_WORKOUTS[0] as unknown as Workout & { workout_exercises: WorkoutExercise[] })
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6 animate-fade-in">
+    <div className="flex flex-col gap-4 sm:gap-6">
       <header className="space-y-0.5">
         <p className="text-xs font-medium capitalize text-muted-foreground sm:text-sm">
           {currentDate}

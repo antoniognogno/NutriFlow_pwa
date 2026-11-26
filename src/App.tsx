@@ -7,7 +7,11 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
 import DashboardLayout from '@/app/dashboard/layout'
 import { lazyWithRetry } from '@/lib/chunkRecovery'
-import { createClient } from '@/lib/supabase/client'
+import {
+  createClient,
+  getSessionWithTimeout,
+  readStoredSupabaseSession,
+} from '@/lib/supabase/client'
 
 // Route-level code splitting for faster mobile cold start (with safe chunk retry recovery)
 const DashboardPage = lazyWithRetry(() => import('@/app/dashboard/page'))
@@ -39,74 +43,67 @@ function ScrollToTopOnNavigate() {
 }
 
 function SessionRedirect() {
-  const [destination, setDestination] = useState<string | null>(null)
+  const [destination, setDestination] = useState<string | null>(() =>
+    readStoredSupabaseSession() ? '/dashboard' : null,
+  )
 
   useEffect(() => {
+    if (destination) return
     let active = true
-    const timeoutId = window.setTimeout(() => {
-      if (active) setDestination('/login')
-    }, 6000)
 
-    void createClient()
-      .auth.getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Impossibile leggere la sessione Supabase:', error)
-          if (active) setDestination('/login')
-          return
-        }
-        if (active) setDestination(data.session ? '/dashboard' : '/login')
-      })
-      .catch(error => {
-        console.error('Errore lettura sessione Supabase:', error)
-        if (active) setDestination('/login')
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId)
-      })
+    void getSessionWithTimeout(createClient(), 3500).then(({ session, error }) => {
+      if (error) {
+        console.error('Impossibile leggere la sessione Supabase:', error)
+      }
+      if (active) setDestination(session ? '/dashboard' : '/login')
+    })
+
     return () => {
       active = false
-      window.clearTimeout(timeoutId)
     }
-  }, [])
+  }, [destination])
 
   return destination ? <Navigate to={destination} replace /> : <PageLoading />
 }
 
 function ProtectedRoute() {
-  const [status, setStatus] = useState<'loading' | 'signed-in' | 'signed-out'>('loading')
+  const [status, setStatus] = useState<'loading' | 'signed-in' | 'signed-out'>(() =>
+    readStoredSupabaseSession() ? 'signed-in' : 'loading',
+  )
 
   useEffect(() => {
     const supabase = createClient()
     let active = true
-    const timeoutId = window.setTimeout(() => {
-      if (active) setStatus(current => (current === 'loading' ? 'signed-out' : current))
-    }, 6000)
 
-    void supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Impossibile verificare la sessione Supabase:', error)
-          if (active) setStatus('signed-out')
-          return
-        }
-        if (active) setStatus(data.session ? 'signed-in' : 'signed-out')
-      })
-      .catch(error => {
-        console.error('Errore verifica sessione Supabase:', error)
-        if (active) setStatus('signed-out')
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId)
-      })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) setStatus(session ? 'signed-in' : 'signed-out')
+    void getSessionWithTimeout(supabase, 3500).then(({ session, timedOut, error }) => {
+      if (!active) return
+      if (error) {
+        console.error('Impossibile verificare la sessione Supabase:', error)
+      }
+      if (session) {
+        setStatus('signed-in')
+        return
+      }
+      // Keep locally authenticated user inside offline/slow mobile sessions unless signed out
+      const hasLocalSession = Boolean(readStoredSupabaseSession())
+      const online = typeof navigator === 'undefined' ? true : navigator.onLine
+      if (!timedOut && (!online ? !hasLocalSession : !hasLocalSession)) {
+        setStatus('signed-out')
+      } else if (!hasLocalSession) {
+        setStatus('signed-out')
+      }
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return
+      if (event === 'SIGNED_OUT') {
+        setStatus('signed-out')
+      } else if (session) {
+        setStatus('signed-in')
+      }
     })
 
     return () => {
       active = false
-      window.clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [])

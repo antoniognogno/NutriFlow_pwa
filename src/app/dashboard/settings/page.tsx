@@ -123,6 +123,7 @@ export default function SettingsPage() {
   const [updateTargetVersion, setUpdateTargetVersion] = useState<string | null>(null)
   const [restartEvaluation, setRestartEvaluation] = useState<RestartEvaluation | null>(null)
   const [updateErrorText, setUpdateErrorText] = useState<string | null>(null)
+  const [isRestartingApp, setIsRestartingApp] = useState(false)
   const updatesCardRef = useRef<HTMLDivElement>(null)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -294,7 +295,11 @@ export default function SettingsPage() {
   const waitMs = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms))
 
   const handleRestartAppNow = () => {
-    window.location.reload()
+    setIsRestartingApp(true)
+    setUpdateStepLabel('Riavvio di NutriFlow in corso...')
+    window.requestAnimationFrame(() => {
+      window.location.reload()
+    })
   }
 
   const handleCheckUpdates = async () => {
@@ -347,11 +352,11 @@ export default function SettingsPage() {
         // Offline/local dev preview might not expose /version.json; proceed with Service Worker check
       }
 
-      setUpdateProgress(38)
-      setUpdateEstimateSec(3)
+      setUpdateProgress(42)
+      setUpdateEstimateSec(2)
       setUpdateStage('downloading')
       setUpdateStepLabel('Controllo Service Worker e risorse PWA...')
-      await waitMs(380)
+      await waitMs(90)
 
       if ('serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.getRegistration()
@@ -360,8 +365,8 @@ export default function SettingsPage() {
             hasWaitingWorker = true
           }
           await registration.update().catch(() => undefined)
-          setUpdateProgress(65)
-          setUpdateEstimateSec(2)
+          setUpdateProgress(70)
+          setUpdateEstimateSec(1)
 
           const waitingAfterUpdate = registration.waiting as ServiceWorker | null
           const installingAfterUpdate = registration.installing as ServiceWorker | null
@@ -369,27 +374,27 @@ export default function SettingsPage() {
           if (waitingAfterUpdate) {
             hasWaitingWorker = true
             setUpdateStage('installing')
-            setUpdateProgress(84)
+            setUpdateProgress(86)
             setUpdateEstimateSec(1)
             setUpdateStepLabel('Attivazione nuova versione scaricata...')
             waitingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
-            await waitMs(650)
+            await waitMs(180)
           } else if (installingAfterUpdate) {
             setUpdateStage('installing')
-            setUpdateProgress(78)
-            setUpdateEstimateSec(2)
+            setUpdateProgress(80)
+            setUpdateEstimateSec(1)
             setUpdateStepLabel('Download nuovo pacchetto in corso...')
 
             await new Promise<void>(resolve => {
-              const timeout = window.setTimeout(resolve, 4500)
+              const timeout = window.setTimeout(resolve, 3500)
               installingAfterUpdate.addEventListener('statechange', () => {
                 if (installingAfterUpdate.state === 'installed') {
                   hasInstallingFinished = true
                   installingAfterUpdate.postMessage({ type: 'SKIP_WAITING' })
-                  setUpdateProgress(90)
+                  setUpdateProgress(92)
                   setUpdateEstimateSec(1)
                   window.clearTimeout(timeout)
-                  window.setTimeout(resolve, 450)
+                  window.setTimeout(resolve, 140)
                 } else if (installingAfterUpdate.state === 'activated') {
                   hasInstallingFinished = true
                   controllerChanged = true
@@ -402,19 +407,19 @@ export default function SettingsPage() {
               })
             })
           } else {
-            await waitMs(280)
+            await waitMs(80)
           }
         }
       } else {
-        await waitMs(320)
+        await waitMs(80)
       }
 
       // Step 3: post-update restart evaluation
       setUpdateStage('evaluating')
-      setUpdateProgress(95)
+      setUpdateProgress(96)
       setUpdateEstimateSec(1)
       setUpdateStepLabel('Valutazione necessità riavvio app...')
-      await waitMs(260)
+      await waitMs(90)
 
       const evaluation = evaluateRestartRequirement({
         hasWaitingWorker,
@@ -961,8 +966,12 @@ export default function SettingsPage() {
         stepLabel={updateStepLabel}
         evaluation={restartEvaluation}
         errorMessage={updateErrorText}
+        isRestarting={isRestartingApp}
         onRestartNow={handleRestartAppNow}
-        onClose={() => setUpdateModalOpen(false)}
+        onClose={() => {
+          setIsRestartingApp(false)
+          setUpdateModalOpen(false)
+        }}
       />
 
       <Button

@@ -125,7 +125,8 @@ export function lazyWithRetry<T extends ComponentType<{}>>(
       if (shouldAttemptAutoReload({ error, isOnline, lastAttemptAt })) {
         const reloaded = triggerSingleAssetReload({ isOnline })
         if (reloaded) {
-          return new Promise<{ default: T }>(() => {})
+          // Bounded wait so a stalled reload never locks Suspense in infinite loading
+          await new Promise<void>(resolve => setTimeout(resolve, 3500))
         }
       }
       throw error

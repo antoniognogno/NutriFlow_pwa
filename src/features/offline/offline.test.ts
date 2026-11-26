@@ -40,16 +40,20 @@ const createQueryChain = () => {
   return chain
 }
 
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
-    },
-    from: vi.fn().mockImplementation(() => createQueryChain()),
-  }),
-}))
+vi.mock('@/lib/supabase/client', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/client')>()
+  return {
+    ...actual,
+    createClient: () => ({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+      from: vi.fn().mockImplementation(() => createQueryChain()),
+    }),
+  }
+})
 
-import { queueAndSync, syncPendingChanges } from './useOfflineSync'
+import { isPermanentSyncError, MAX_OUTBOX_ATTEMPTS, queueAndSync, syncPendingChanges } from './useOfflineSync'
 
 describe('Offline Sync Outbox', () => {
   beforeEach(() => {
@@ -177,5 +181,26 @@ describe('Offline Sync Outbox', () => {
     expect(mockDelete).toHaveBeenCalledWith('water_logs_reset_day:2026-11-26')
     expect(mockDelete).toHaveBeenCalledWith('profiles_water_goal:user-1')
     expect(mockDelete).toHaveBeenCalledWith('workout_plans_sync:plan-offline-1')
+  })
+
+  it('removes stuck poison-pill outbox entries after max attempts instead of keeping orange pending count forever', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    mockSortBy.mockResolvedValueOnce([
+      {
+        id: 'workout_sessions_delete:dead-sess',
+        userId: 'user-1',
+        table: 'workout_sessions_delete',
+        payload: { session_id: 'dead-sess' },
+        createdAt: 1,
+        attempts: MAX_OUTBOX_ATTEMPTS,
+      },
+    ])
+
+    const synced = await syncPendingChanges()
+    expect(synced).toBe(0)
+    expect(mockDelete).toHaveBeenCalledWith('workout_sessions_delete:dead-sess')
+    expect(isPermanentSyncError({ code: '23503' })).toBe(true)
+    expect(isPermanentSyncError({ status: 404 })).toBe(true)
+    expect(isPermanentSyncError(new Error('Failed to fetch'))).toBe(false)
   })
 })

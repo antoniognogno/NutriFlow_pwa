@@ -154,52 +154,53 @@
 @keyframes nf-pop-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.975);
+    transform: translate3d(0, 6px, 0) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: none;
   }
 }
 
 @keyframes nf-splash-float {
   0%, 100% {
-    transform: translateY(0) scale(1);
-    box-shadow: 0 0 24px rgba(52, 211, 153, 0.22);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   50% {
-    transform: translateY(-3px) scale(1.03);
-    box-shadow: 0 0 36px rgba(122, 166, 189, 0.34);
+    transform: translate3d(0, -3px, 0) scale(1.02);
   }
 }
 
 @keyframes nf-shimmer {
   0% {
-    transform: translateX(-100%);
+    transform: translate3d(-100%, 0, 0);
   }
   100% {
-    transform: translateX(220%);
+    transform: translate3d(260%, 0, 0);
   }
 }
 
 .nf-page-enter {
-  animation: nf-page-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: nf-page-in 120ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .nf-pop-enter {
-  animation: nf-pop-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: nf-pop-in 140ms cubic-bezier(0.2, 0, 0, 1) both;
+  will-change: transform, opacity;
 }
 
 .nf-splash-logo {
-  animation: nf-splash-float 1.8s ease-in-out infinite;
+  animation: nf-splash-float 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
 }
 
 .nf-splash-bar {
-  animation: nf-shimmer 1.15s ease-in-out infinite;
+  animation: nf-shimmer 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
 }
 
 .nf-interactive {
-  transition: transform 150ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition: transform 110ms cubic-bezier(0.2, 0, 0, 1), background-color 140ms ease, border-color 140ms ease;
 }
 
 .nf-interactive:active {
