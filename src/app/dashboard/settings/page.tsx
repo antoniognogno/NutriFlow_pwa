@@ -1,160 +1,455 @@
 'use client'
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Check, Download, Droplets, Dumbbell, LogOut, Moon, Ruler, Scale, Sun, Target, User } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { toast } from 'sonner'
+import { NutriFlowLogo } from '@/components/NutriFlowLogo'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { siteConfig } from '@/config/attributes'
+import { createClient } from '@/lib/supabase/client'
+import { readHabitLogs, readHabits } from '@/features/routine/habitStore'
+import { computeBmi, readBodyProfile, saveBodyProfile } from '@/features/routine/profileGoalsStore'
+import { readWeightLogs, upsertWeightEntry } from '@/features/routine/weightStore'
+import { readTrashItems } from '@/features/trash/trashStore'
+import { getWeeklyWorkoutGoal, saveWeeklyWorkoutGoal } from '@/app/components/dashboard/home/progressUtils'
 
-// --- PERCORSI DI IMPORT CORRETTI ---
-import { OnboardingStepper } from "@/app/components/OnboardingStepper";
-import { StepUsername } from "@/app/components/steps/StepsUsername";
-import { StepDiet } from "@/app/components/steps/StepsDiet";
-import { StepPreferences } from "@/app/components/steps/StepsPreferences";
-
-// --- ALTRI IMPORT ---
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { siteConfig } from "@/config/attributes";
-import { GalleryVerticalEnd } from "lucide-react";
-
-// Definiamo il tipo di dati del nostro form
-type FormData = {
-  username: string;
-  diet_type: string;
-  allergies: string;
-  disliked_foods: string;
-};
-
-const TOTAL_STEPS = 3;
+const WATER_GOAL_OPTIONS = [2000, 2500, 3000, 3500] as const
+const WORKOUT_GOAL_OPTIONS = [3, 4, 5, 6] as const
 
 export default function SettingsPage() {
-  const router = useRouter();
-  const supabase = createClient();
-  
-  const [userId, setUserId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const router = useRouter()
+  const supabase = createClient()
+  const { theme, setTheme } = useTheme()
 
-  const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<FormData>({
-    username: "",
-    diet_type: "",
-    allergies: "",
-    disliked_foods: "",
-  });
+  const [userId, setUserId] = useState<string | null>(null)
+  const [email, setEmail] = useState<string>('')
+  const [username, setUsername] = useState('')
+  const [weightKgInput, setWeightKgInput] = useState(() => {
+    const bp = readBodyProfile()
+    const logs = readWeightLogs()
+    const latest = logs.length > 0 ? logs[logs.length - 1].weightKg : bp.weightKg
+    return latest !== null ? String(latest) : ''
+  })
+  const [targetWeightInput, setTargetWeightInput] = useState(() => {
+    const bp = readBodyProfile()
+    return bp.targetWeightKg !== null ? String(bp.targetWeightKg) : ''
+  })
+  const [heightCmInput, setHeightCmInput] = useState(() => {
+    const bp = readBodyProfile()
+    return bp.heightCm !== null ? String(bp.heightCm) : ''
+  })
+  const [ageInput, setAgeInput] = useState(() => {
+    const bp = readBodyProfile()
+    return bp.age !== null ? String(bp.age) : ''
+  })
+  const [sexInput, setSexInput] = useState<'m' | 'f' | ''>(() => readBodyProfile().sex)
+  const [waterGoalMl, setWaterGoalMl] = useState(2500)
+  const [weeklyWorkoutGoal, setWeeklyWorkoutGoal] = useState(() => getWeeklyWorkoutGoal())
+  const [dietType, setDietType] = useState('')
+  const [allergies, setAllergies] = useState('')
+  const [dislikedFoods, setDislikedFoods] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
-  // Funzioni di navigazione
-  const updateFormData = (newData: Partial<FormData>) => setFormData(prev => ({ ...prev, ...newData }));
-  const goToNextStep = () => setCurrentStep(prev => Math.min(prev + 1, TOTAL_STEPS));
-  const goToPreviousStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
-  const goToStep = (step: number) => {
-    if (step >= 1 && step <= TOTAL_STEPS) {
-      setCurrentStep(step);
-    }
-  };
-
-  // Funzione per aggiornare il profilo
-  const handleUpdateProfile = async () => {
-    if (!userId) return;
-
-  const allergiesArray = formData.allergies.split(',').map(item => item.trim()).filter(Boolean);
-  const dislikedFoodsArray = formData.disliked_foods.split(',').map(item => item.trim()).filter(Boolean);
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log("user.id da Supabase:", user?.id);
-  console.log("userId passato nell'upsert:", userId);
-
-    const { error } = await supabase
-      .from('profiles')
-      .upsert([{
-        id: userId,
-        username: formData.username,
-        diet_type: formData.diet_type,
-        allergies: allergiesArray,
-        disliked_foods: dislikedFoodsArray,
-        updated_at: new Date().toISOString(),
-      }]);
-
-    if (error) {
-      alert("Errore durante l&apos;aggiornamento: " + error.message);
-    } else {
-      setSuccessMessage("Profilo aggiornato con successo!");
-      router.refresh();
-      router.push('/dashboard');
-    }
-  };
-  
-  // Hook per caricare i dati del profilo esistente
   useEffect(() => {
-    const fetchInitialData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
+    const loadProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const user = session?.user
+        if (!user) {
+          router.replace('/login')
+          return
+        }
+        setUserId(user.id)
+        setEmail(user.email ?? '')
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username, water_goal_ml, diet_type, allergies, disliked_foods')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (profile) {
+          setUsername(profile.username ?? '')
+          setWaterGoalMl(profile.water_goal_ml ?? 2500)
+          setDietType(profile.diet_type ?? '')
+          setAllergies((profile.allergies ?? []).join(', '))
+          setDislikedFoods((profile.disliked_foods ?? []).join(', '))
+        }
+      } finally {
+        setIsLoading(false)
       }
-      setUserId(user.id);
+    }
+    void loadProfile()
+  }, [router, supabase])
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profile) {
-        setFormData({
-          username: profile.username || "",
-          diet_type: profile.diet_type || "",
-          allergies: (profile.allergies || []).join(', '),
-          disliked_foods: (profile.disliked_foods || []).join(', '),
-        });
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!userId || isSaving) return
+    setIsSaving(true)
+    try {
+      saveWeeklyWorkoutGoal(weeklyWorkoutGoal)
+      const parsedWeight = weightKgInput ? Number.parseFloat(weightKgInput) : null
+      const parsedTarget = targetWeightInput ? Number.parseFloat(targetWeightInput) : null
+      const parsedHeight = heightCmInput ? Number.parseInt(heightCmInput, 10) : null
+      const parsedAge = ageInput ? Number.parseInt(ageInput, 10) : null
+      const savedBody = saveBodyProfile({
+        weightKg: Number.isFinite(parsedWeight) ? parsedWeight : null,
+        targetWeightKg: Number.isFinite(parsedTarget) ? parsedTarget : null,
+        heightCm: Number.isFinite(parsedHeight) ? parsedHeight : null,
+        age: Number.isFinite(parsedAge) ? parsedAge : null,
+        sex: sexInput,
+      })
+      if (savedBody.weightKg !== null) {
+        upsertWeightEntry(savedBody.weightKg)
       }
-      setIsLoading(false);
-    };
-
-    fetchInitialData();
-  }, [router, supabase]);
-
-  if (isLoading) {
-    return <div className="flex items-center justify-center min-h-screen bg-background text-foreground">Caricamento impostazioni...</div>;
+      const { error } = await supabase.from('profiles').upsert([{
+        id: userId,
+        username: username.trim() || 'Atleta',
+        water_goal_ml: waterGoalMl,
+        diet_type: dietType.trim() || null,
+        allergies: allergies.split(',').map(s => s.trim()).filter(Boolean),
+        disliked_foods: dislikedFoods.split(',').map(s => s.trim()).filter(Boolean),
+        updated_at: new Date().toISOString(),
+      }])
+      if (error) throw error
+      window.dispatchEvent(new Event('nutriflow:data-updated'))
+      toast.success('Impostazioni salvate.')
+    } catch (error) {
+      console.error('Errore salvataggio impostazioni:', error)
+      toast.error('Impossibile salvare le impostazioni.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  // --- LAYOUT COERENTE CON LE ALTRE PAGINE ---
+  const handleExportBackup = () => {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      bodyProfile: readBodyProfile(),
+      weeklyWorkoutGoal,
+      habits: readHabits(),
+      habitLogs: readHabitLogs(),
+      weightLogs: readWeightLogs(),
+      trash: readTrashItems(),
+    }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `nutriflow-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Backup locale esportato.')
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
+  if (isLoading) {
+    return <p className="py-12 text-center text-sm text-muted-foreground">Caricamento impostazioni...</p>
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-        <div className="w-full max-w-lg space-y-6">
-            <div className="flex flex-col items-center space-y-2 text-center">
-                <div className="flex items-center gap-2">
-                    <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-                        <GalleryVerticalEnd className="size-5" />
-                    </div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">{siteConfig.name}</h1>
-                </div>
-                <p className="text-muted-foreground">Modifica le tue preferenze</p>
-            </div>
-
-            <Card className="p-6 sm:p-8 space-y-8">
-                <OnboardingStepper 
-                    currentStep={currentStep} 
-                    totalSteps={TOTAL_STEPS} 
-                    goToStep={goToStep} 
-                />
-
-                <div className="pt-4">
-                    {currentStep === 1 && <StepUsername data={formData} updateData={updateFormData} onNext={goToNextStep} />}
-                    {currentStep === 2 && <StepDiet data={formData} updateData={updateFormData} onNext={goToNextStep} onBack={goToPreviousStep} />}
-                    {currentStep === 3 && <StepPreferences data={formData} updateData={updateFormData} onBack={goToPreviousStep} onSave={handleUpdateProfile} />}
-                </div>
-
-                {successMessage && (
-                    <p className="text-center text-green-600 font-semibold pt-4">{successMessage}</p>
-                )}
-            </Card>
-            
-            <div className="text-center">
-                <Button asChild variant="ghost">
-                    <Link href="/dashboard">Torna alla Dashboard</Link>
-                </Button>
-            </div>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 pb-8">
+      <header className="flex items-center gap-3">
+        <NutriFlowLogo className="size-11 shrink-0" />
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Impostazioni</h1>
+          <p className="truncate text-xs text-muted-foreground">
+            {siteConfig.name} · {email || 'Profilo personale'}
+          </p>
         </div>
+      </header>
+
+      <form onSubmit={e => void handleSave(e)} className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <User className="size-4 text-primary" />
+              Profilo & Obiettivi
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Personalizza nome e target giornalieri/settimanali
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="settings-username">Nome visualizzato</Label>
+              <Input
+                id="settings-username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="Es. Antonio"
+                className="h-11"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-weight" className="flex items-center gap-1.5 text-xs">
+                  <Scale className="size-3.5 text-primary" />
+                  Peso attuale (kg)
+                </Label>
+                <Input
+                  id="settings-weight"
+                  type="number"
+                  inputMode="decimal"
+                  min="20"
+                  max="300"
+                  step="0.1"
+                  value={weightKgInput}
+                  onChange={e => setWeightKgInput(e.target.value)}
+                  placeholder="Es. 75.0"
+                  className="h-10 font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-target-weight" className="flex items-center gap-1.5 text-xs">
+                  <Target className="size-3.5 text-emerald-400" />
+                  Obiettivo peso (kg)
+                </Label>
+                <Input
+                  id="settings-target-weight"
+                  type="number"
+                  inputMode="decimal"
+                  min="20"
+                  max="300"
+                  step="0.1"
+                  value={targetWeightInput}
+                  onChange={e => setTargetWeightInput(e.target.value)}
+                  placeholder="Es. 72.0"
+                  className="h-10 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-height" className="flex items-center gap-1 text-xs">
+                  <Ruler className="size-3.5 text-primary" />
+                  Altezza (cm)
+                </Label>
+                <Input
+                  id="settings-height"
+                  type="number"
+                  inputMode="numeric"
+                  min="100"
+                  max="250"
+                  value={heightCmInput}
+                  onChange={e => setHeightCmInput(e.target.value)}
+                  placeholder="178"
+                  className="h-10 font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-age" className="text-xs">Età</Label>
+                <Input
+                  id="settings-age"
+                  type="number"
+                  inputMode="numeric"
+                  min="12"
+                  max="110"
+                  value={ageInput}
+                  onChange={e => setAgeInput(e.target.value)}
+                  placeholder="24"
+                  className="h-10 font-mono"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Sesso</Label>
+                <div className="grid h-10 grid-cols-2 gap-1">
+                  {(['m', 'f'] as const).map(code => (
+                    <Button
+                      key={code}
+                      type="button"
+                      size="sm"
+                      variant={sexInput === code ? 'secondary' : 'outline'}
+                      className={`h-10 rounded-lg px-0 text-xs uppercase ${
+                        sexInput === code ? 'border-primary/40 bg-primary/15 text-primary' : ''
+                      }`}
+                      onClick={() => setSexInput(prev => (prev === code ? '' : code))}
+                    >
+                      {code}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const w = Number.parseFloat(weightKgInput)
+              const t = Number.parseFloat(targetWeightInput)
+              const h = Number.parseInt(heightCmInput, 10)
+              const bmi = computeBmi(Number.isFinite(w) ? w : null, Number.isFinite(h) ? h : null)
+              const gap = Number.isFinite(w) && Number.isFinite(t) ? Math.round((w - t) * 10) / 10 : null
+              if (bmi === null && gap === null) return null
+              return (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2 text-xs">
+                  <span>
+                    {bmi !== null ? (
+                      <>BMI stimato: <strong className="font-mono text-primary">{bmi}</strong></>
+                    ) : (
+                      'Inserisci altezza per il BMI'
+                    )}
+                  </span>
+                  {gap !== null && (
+                    <span className="font-mono text-emerald-400">
+                      {gap === 0
+                        ? 'Target raggiunto'
+                        : `${gap > 0 ? `-${gap.toFixed(1)}` : `+${Math.abs(gap).toFixed(1)}`} kg al target`}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
+
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Droplets className="size-3.5 text-sky-400" />
+                Obiettivo acqua giornaliero
+              </Label>
+              <div className="grid grid-cols-4 gap-2">
+                {WATER_GOAL_OPTIONS.map(ml => (
+                  <Button
+                    key={ml}
+                    type="button"
+                    size="sm"
+                    variant={waterGoalMl === ml ? 'secondary' : 'outline'}
+                    className={`h-9 rounded-xl font-mono text-xs ${
+                      waterGoalMl === ml ? 'border-sky-500/40 bg-sky-500/15 text-sky-300' : ''
+                    }`}
+                    onClick={() => setWaterGoalMl(ml)}
+                  >
+                    {(ml / 1000).toFixed(1)}L
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Dumbbell className="size-3.5 text-emerald-400" />
+                Allenamenti a settimana
+              </Label>
+              <div className="grid grid-cols-4 gap-2">
+                {WORKOUT_GOAL_OPTIONS.map(count => (
+                  <Button
+                    key={count}
+                    type="button"
+                    size="sm"
+                    variant={weeklyWorkoutGoal === count ? 'secondary' : 'outline'}
+                    className={`h-9 rounded-xl font-mono text-xs ${
+                      weeklyWorkoutGoal === count ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300' : ''
+                    }`}
+                    onClick={() => setWeeklyWorkoutGoal(count)}
+                  >
+                    {count}× / sett
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="settings-diet">Stile alimentare (opzionale)</Label>
+              <Input
+                id="settings-diet"
+                value={dietType}
+                onChange={e => setDietType(e.target.value)}
+                placeholder="Es. Bilanciata, Iperproteica..."
+                className="h-11"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-allergies">Allergie</Label>
+                <Input
+                  id="settings-allergies"
+                  value={allergies}
+                  onChange={e => setAllergies(e.target.value)}
+                  placeholder="Separate da virgola"
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="settings-disliked">Cibi da evitare</Label>
+                <Input
+                  id="settings-disliked"
+                  value={dislikedFoods}
+                  onChange={e => setDislikedFoods(e.target.value)}
+                  placeholder="Separati da virgola"
+                  className="h-10"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isSaving}
+              className="h-11 w-full rounded-xl bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              <Check className="mr-1.5 size-4" />
+              {isSaving ? 'Salvataggio...' : 'Salva impostazioni'}
+            </Button>
+          </CardContent>
+        </Card>
+      </form>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Aspetto & Dati</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={theme === 'dark' ? 'secondary' : 'outline'}
+              className="h-10 rounded-xl text-xs"
+              onClick={() => setTheme('dark')}
+            >
+              <Moon className="mr-1.5 size-4" />
+              Tema Scuro
+            </Button>
+            <Button
+              type="button"
+              variant={theme === 'light' ? 'secondary' : 'outline'}
+              className="h-10 rounded-xl text-xs"
+              onClick={() => setTheme('light')}
+            >
+              <Sun className="mr-1.5 size-4" />
+              Tema Chiaro
+            </Button>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full rounded-xl border-primary/40 text-xs text-primary hover:bg-primary/10"
+            onClick={handleExportBackup}
+          >
+            <Download className="mr-1.5 size-4" />
+            Esporta backup locale (Routine, Peso, Cestino)
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Button
+        type="button"
+        variant="destructive"
+        className="h-11 w-full rounded-xl"
+        onClick={() => void handleLogout()}
+      >
+        <LogOut className="mr-1.5 size-4" />
+        Esci dall’account
+      </Button>
     </div>
-  );
+  )
 }

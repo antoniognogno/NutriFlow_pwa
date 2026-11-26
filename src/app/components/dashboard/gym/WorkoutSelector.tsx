@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Dumbbell, Trash2 } from 'lucide-react';
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types';
 import { Button } from '@/components/ui/button';
+import { moveToTrash } from '@/features/trash/trashStore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,18 +42,28 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
     if (error) {
       setError("Errore durante l'eliminazione: " + error.message);
     } else {
+      moveToTrash({
+        id: `workout_plan:${plan.id}`,
+        kind: 'workout_plan',
+        title: plan.name,
+        subtitle: `${plan.workouts?.length ?? 0} allenamenti`,
+        plan,
+      });
       onDeleteSuccess();
-      toast.success("Scheda eliminata con successo.");
+      window.dispatchEvent(new Event('nutriflow:data-updated'));
+      toast.success("Scheda spostata nel cestino (30 giorni).");
     }
     setIsDeleting(false);
     setConfirmText("");
   };
 
   return (
-    <div className="relative">
-      <div className="absolute top-2 right-2 h-8 z-10 flex items-center">
-        {editComponent}
-        <AlertDialog onOpenChange={() => {setError(null); setConfirmText("")}}>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <CardDescription className="min-w-0">Seleziona un allenamento per iniziare.</CardDescription>
+        <div className="flex shrink-0 items-center">
+          {editComponent}
+          <AlertDialog onOpenChange={() => {setError(null); setConfirmText("")}}>
           <AlertDialogTrigger asChild>
             <Button variant="ghost" size="icon" className="h-7 w-7">
               <Trash2 className="h-4 w-4 text-destructive" />
@@ -90,11 +101,10 @@ export default function WorkoutSelector({ plan, onDeleteSuccess, editComponent }
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </div>
       </div>
-      
-      <CardDescription className="mb-4">Seleziona un allenamento per iniziare la sessione.</CardDescription>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {(plan.workouts || []).map((workout) => (
           <Link key={workout.id} href={`/dashboard/gym/${workout.id}`} passHref>
             <div className="flex flex-col items-center justify-center text-center p-6 border rounded-lg hover:bg-muted/50 transition-colors h-full cursor-pointer">

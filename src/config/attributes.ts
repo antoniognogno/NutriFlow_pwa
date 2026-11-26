@@ -1,6 +1,6 @@
-// src/config/site.ts
+// src/config/attributes.ts
 
 export const siteConfig = {
   name: "NutriFlow",
-  description: "Il tuo assistente personale per il benessere.",
+  description: "Organizza studio, allenamento e benessere in un'unica PWA.",
 };

@@ -3,11 +3,13 @@
 
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
-import { FocusCard } from "@/app/components/dashboard/home/FocusCard";
+import { TodayWidget } from "@/features/dashboard/TodayWidget";
+import { GamificationCard } from "@/app/components/dashboard/home/GamificationCard";
 import { NextWorkoutCard } from "@/app/components/dashboard/home/NextWorkoutCard";
 import { ProgressRings } from "@/app/components/dashboard/home/ProgressRings";
 import { RecentWins } from "@/app/components/dashboard/home/RecentWins";
-import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types"; // Importiamo il nostro tipo custom
+import { DEFAULT_WORKOUTS } from "@/features/workouts/defaultWorkouts";
+import type { PlanWithWorkoutsAndExercises, Workout, WorkoutExercise } from "@/lib/supabase/types";
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
@@ -37,97 +39,61 @@ export default function DashboardPage() {
   const supabase = createClient()
   const [username, setUsername] = useState<string | null>(null)
   const [latestPlan, setLatestPlan] = useState<PlanWithWorkoutsAndExercises | null>(null);
-  const [isLoading, setIsLoading] = useState(true)
-  const [wins, setWins] = useState<Win[]>([]);
   const currentDate = getFormattedDate();
 
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      setIsLoading(true);
-
-      // Eseguiamo le chiamate in parallelo per più velocità
-      const [profileResponse, planResponse, winsResponse] = await Promise.all([
-        // Chiamata per il profilo utente
+      const [profileResponse, planResponse] = await Promise.all([
         supabase.from('profiles').select('username').single(),
-        
-        // <<< CHIAMATA RPC PER IL PIANO DI ALLENAMENTO
         supabase.rpc('get_latest_plan_details'),
-        supabase.rpc('get_recent_wins')
       ]);
 
-      // Gestione del profilo
       if (profileResponse.data) {
         setUsername(profileResponse.data.username);
       }
-      
-      // Gestione del piano di allenamento
       if (planResponse.data) {
-        // La RPC restituisce un JSON, che noi "castiamo" al nostro tipo per sicurezza
         setLatestPlan(planResponse.data as PlanWithWorkoutsAndExercises);
       }
-      
-      // Se c'è un errore nella RPC, loggalo
-      if(planResponse.error) {
+      if (planResponse.error) {
         console.error("Errore nel recupero del piano via RPC:", planResponse.error);
       }
-
-      if (winsResponse.data) {
-        setWins(winsResponse.data as Win[]);
-      }
-      if(winsResponse.error){
-        console.error("Errore nel recupero delle vittorie:", winsResponse.error);
-      }
-      setIsLoading(false);
     }
 
     fetchDashboardData();
   }, [supabase]);
 
-  // Estraiamo il prossimo workout dai dati di stato
-  const nextWorkout = latestPlan?.workouts?.[0];
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center h-[calc(100vh-80px)]">
-          <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-      </div>
-    );
-  }
+  const nextWorkout =
+    latestPlan?.workouts?.[0] ??
+    (DEFAULT_WORKOUTS[0] as unknown as Workout & { workout_exercises: WorkoutExercise[] });
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
-      <header className="mb-8">
-        <p className="text-sm text-muted-foreground mt-1">
+    <div className="flex flex-col gap-4 sm:gap-6 animate-fade-in">
+      <header className="space-y-0.5">
+        <p className="text-xs font-medium capitalize text-muted-foreground sm:text-sm">
           {currentDate}
         </p>
-        <h1 className="text-3xl font-bold tracking-tight">
-          Bentornato, <p className="text-primary">{username || 'Atleta'}!</p>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          Bentornato, <span className="text-primary">{username || 'Atleta'}!</span>
         </h1>
-        <p className="text-md text-muted-foreground mt-1">
-          Ecco il riepilogo della tua giornata e i tuoi prossimi obiettivi.
-        </p>
       </header>
-      
-      <main className="space-y-8">
-        <FocusCard
-          // insight={insightData?.insight} 
-          // isLoading={!insightData && !insightError} 
-          // error={insightError} 
-        />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+      <div className="space-y-4 sm:space-y-6">
+        <GamificationCard />
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
           <div className="lg:col-span-2">
             <ProgressRings />
           </div>
           <div className="lg:col-span-1">
-            {/* Passiamo il workout estratto dallo stato */}
             <NextWorkoutCard workout={nextWorkout} />
           </div>
         </div>
 
+        <TodayWidget />
+
         <RecentWins />
-      </main>
+      </div>
     </div>
   );
 }

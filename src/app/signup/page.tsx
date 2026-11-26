@@ -1,6 +1,6 @@
 import { SignUpForm } from "../components/signUpForm"; // Assicurati che il percorso sia corretto!
 import { siteConfig } from "../../config/attributes";
-import { GalleryVerticalEnd } from "lucide-react";
+import { NutriFlowLogo } from "@/components/NutriFlowLogo";
 
 export default function SignUpPage() {
   return (
@@ -9,9 +9,7 @@ export default function SignUpPage() {
         <div className="flex flex-col items-center space-y-2 text-center">
           {/* Logo e Nome App */}
           <div className="flex items-center gap-2">
-             <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-                <GalleryVerticalEnd className="size-5" />
-             </div>
+             <NutriFlowLogo className="size-9" />
              <h1 className="text-2xl font-bold tracking-tight">{siteConfig.name}</h1>
           </div>
         </div>

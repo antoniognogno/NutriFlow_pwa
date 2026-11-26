@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'; // Aggiungiamo useState
 import { createClient } from '@/lib/supabase/client';
 import { LoginForm } from "@/app/components/loginForm"; 
 import { siteConfig } from "@/config/attributes"; 
-import { GalleryVerticalEnd } from "lucide-react";
+import { NutriFlowLogo } from "@/components/NutriFlowLogo";
 import { Loader2 } from 'lucide-react'; // Importiamo un loader
 
 export default function LoginPage() {
@@ -58,9 +58,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center space-y-2 text-center">
           <div className="flex items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-              <GalleryVerticalEnd className="size-5" />
-            </div>
+            <NutriFlowLogo className="size-9" />
             <h1 className="text-2xl font-bold tracking-tight text-foreground dark:text-white">{siteConfig.name}</h1>
           </div>
         </div>
