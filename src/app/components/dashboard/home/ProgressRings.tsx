@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { readCachedWaterState, sumWaterLogs } from '@/features/nutrition/waterOfflineCache'
+import { readCachedProfileSettings } from '@/features/routine/profileGoalsStore'
+import { readCachedSessions } from '@/features/workouts/workoutOfflineCache'
 import { createClient } from '@/lib/supabase/client'
 import {
   clampRingPercent,
@@ -58,14 +61,33 @@ function Ring({ progress, label, value, colorClass }: RingProps) {
 
 export function ProgressRings() {
   const supabase = createClient()
-  const [snapshot, setSnapshot] = useState<ProgressSnapshot>({
-    workoutsThisWeek: 0,
-    waterMlToday: 0,
-    waterGoalMl: DEFAULT_WATER_GOAL_ML,
-    focusMinutesToday: 0,
+  const [snapshot, setSnapshot] = useState<ProgressSnapshot>(() => {
+    const startOfWeekIso = getStartOfWeekIso()
+    const cachedSessions = readCachedSessions().filter(s => s.started_at >= startOfWeekIso)
+    return {
+      workoutsThisWeek: cachedSessions.length,
+      waterMlToday: sumWaterLogs(readCachedWaterState().logs),
+      waterGoalMl: readCachedProfileSettings().water_goal_ml || DEFAULT_WATER_GOAL_ML,
+      focusMinutesToday: 0,
+    }
   })
 
   const loadSnapshot = useCallback(async () => {
+    const startOfWeekIso = getStartOfWeekIso()
+    const localWater = sumWaterLogs(readCachedWaterState().logs)
+    const localGoal = readCachedProfileSettings().water_goal_ml || DEFAULT_WATER_GOAL_ML
+    const localWorkouts = readCachedSessions().filter(s => s.started_at >= startOfWeekIso).length
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setSnapshot(prev => ({
+        workoutsThisWeek: Math.max(prev.workoutsThisWeek, localWorkouts),
+        waterMlToday: localWater,
+        waterGoalMl: localGoal,
+        focusMinutesToday: prev.focusMinutesToday,
+      }))
+      return
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
@@ -74,7 +96,6 @@ export function ProgressRings() {
       const startOfDay = new Date()
       startOfDay.setHours(0, 0, 0, 0)
       const startOfDayIso = startOfDay.toISOString()
-      const startOfWeekIso = getStartOfWeekIso()
 
       const [profileRes, waterRes, workoutsRes, focusRes] = await Promise.all([
         supabase.from('profiles').select('water_goal_ml').eq('id', user.id).maybeSingle(),

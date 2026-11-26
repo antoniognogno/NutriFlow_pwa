@@ -15,6 +15,7 @@ const SYNCED_STORAGE_KEYS = [
   'nutriflow:trash-v1',
   'nutriflow:exercise-notes-v1',
   'nutriflow:routine-reminder-v1',
+  'nutriflow:avatar-v1',
 ] as const
 
 export interface CloudSnapshot {

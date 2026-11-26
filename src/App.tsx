@@ -1,16 +1,16 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { TransitionProvider } from '@/app/context/TransitionContext'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
 import DashboardLayout from '@/app/dashboard/layout'
-import DashboardPage from '@/app/dashboard/page'
-import LoginPage from '@/app/login/page'
-import SignUpPage from '@/app/signup/page'
 import { createClient } from '@/lib/supabase/client'
 
 // Route-level code splitting for faster mobile cold start (all chunks precached by VitePWA offline)
+const DashboardPage = lazy(() => import('@/app/dashboard/page'))
+const LoginPage = lazy(() => import('@/app/login/page'))
+const SignUpPage = lazy(() => import('@/app/signup/page'))
 const RoutinePage = lazy(() => import('@/app/dashboard/routine/page'))
 const GymPage = lazy(() => import('@/app/dashboard/gym/page'))
 const GymHistoryPage = lazy(() => import('@/app/dashboard/gym/history/page'))
@@ -23,6 +23,18 @@ const SettingsPage = lazy(() => import('@/app/dashboard/settings/page'))
 const StatsPage = lazy(() => import('@/app/dashboard/stats/page'))
 const WaterTrackerPage = lazy(() => import('@/app/dashboard/water/page'))
 const OnboardingPage = lazy(() => import('@/app/onboarding/page'))
+const PrivacyPage = lazy(() => import('@/app/legal/PrivacyPage'))
+const TermsPage = lazy(() => import('@/app/legal/TermsPage'))
+
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [pathname])
+
+  return null
+}
 
 function SessionRedirect() {
   const [destination, setDestination] = useState<string | null>(null)
@@ -135,11 +147,14 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
         <TransitionProvider>
+          <ScrollToTopOnNavigate />
           <Suspense fallback={<PageLoading />}>
             <Routes>
               <Route path="/" element={<SessionRedirect />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
               <Route path="/auth/callback" element={<OAuthCallback />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/onboarding" element={<OnboardingPage />} />

@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Compass, Lightbulb, Navigation, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  captureAndGetSessionEntryMode,
   markTourDismissed,
   readTourState,
   shouldAutoStartTour,
@@ -57,6 +58,7 @@ export function AppTourOverlay() {
   useEffect(() => {
     const previousState = readTourState()
     const now = Date.now()
+    captureAndGetSessionEntryMode(now)
     if (shouldAutoStartTour(previousState, now)) {
       setStepIndex(0)
       setIsOpen(true)

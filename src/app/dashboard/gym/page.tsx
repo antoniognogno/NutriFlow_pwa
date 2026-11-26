@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Camera, ChevronRight, Dumbbell, History, LineChart, PauseCircle, Pencil, Play, Plus, Trash2, X } from "lucide-react";
+import { Camera, ChevronRight, ClipboardPaste, Dumbbell, History, LineChart, PauseCircle, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { focusAndScrollToElement } from "@/lib/focusScroll";
 import { PlanWithWorkoutsAndExercises } from "@/lib/supabase/types";
@@ -333,11 +333,24 @@ export default function GymPage() {
 
           {/* 1. Schede personalizzate dell'utente PRIMA */}
           <section aria-labelledby="db-plans-heading" className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2" data-tour="gym-new-plan">
+            <div className="flex flex-wrap items-center justify-between gap-2" data-tour="gym-new-plan">
               <h2 id="db-plans-heading" className="text-sm font-semibold text-muted-foreground">
                 Le mie schede personalizzate
               </h2>
-              <NewPlanDialog mode="create" onSaveSuccess={fetchGymData} />
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-primary/40 bg-primary/10 px-2.5 text-xs text-primary hover:bg-primary/20"
+                  asChild
+                >
+                  <Link href="/dashboard/gym/plan/new?import=ai">
+                    <ClipboardPaste className="mr-1.5 size-3.5" />
+                    Da Gemini
+                  </Link>
+                </Button>
+                <NewPlanDialog mode="create" onSaveSuccess={fetchGymData} />
+              </div>
             </div>
             {isLoading ? (
               <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">

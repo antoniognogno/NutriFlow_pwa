@@ -4,6 +4,7 @@
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
 import { TodayWidget } from "@/features/dashboard/TodayWidget";
+import { WelcomeBackCtaCard } from "@/features/dashboard/WelcomeBackCtaCard";
 import { GamificationCard } from "@/app/components/dashboard/home/GamificationCard";
 import { NextWorkoutCard } from "@/app/components/dashboard/home/NextWorkoutCard";
 import { ProgressRings } from "@/app/components/dashboard/home/ProgressRings";
@@ -114,6 +115,8 @@ export default function DashboardPage() {
       </header>
 
       <div className="space-y-4 sm:space-y-6">
+        <WelcomeBackCtaCard />
+
         <GamificationCard />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">

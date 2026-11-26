@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Check, GlassWater, Droplet, Milk, Pencil, Plus, RotateCcw, SlidersHorizontal, Undo2, Utensils, Waves, X } from "lucide-react";
 import { toast } from "sonner";
-import { WaterLogChart } from "@/app/components/dashboard/WaterLogChart";
+import { WaterHistoryReportCard } from "@/features/reports/WaterHistoryReportCard";
+import { validateSafeUserText } from "@/lib/authSecurity";
 import { offlineDatabase } from "@/features/offline/database";
 import {
   clearPendingTodayWaterOutbox,
@@ -391,9 +392,16 @@ export default function WaterTrackerPage() {
 
   const handleSavePresets = (e: React.FormEvent) => {
     e.preventDefault();
+    for (const item of presetDrafts) {
+      const check = validateSafeUserText(item.label, 'Nome dose', 30);
+      if (!check.ok) {
+        toast.error(check.error);
+        return;
+      }
+    }
     const cleaned = presetDrafts.map(item => ({
       ...item,
-      label: item.label.trim() || 'Dose',
+      label: validateSafeUserText(item.label, 'Nome dose', 30).value || 'Dose',
       amountMl: Math.max(25, Math.min(3000, Math.round(Number(item.amountMl) || 100))),
     }));
     setPresets(cleaned);
@@ -755,7 +763,11 @@ export default function WaterTrackerPage() {
         )}
       </Card>
 
-      {chartData.some(d => d.ml > 0) && <WaterLogChart />}
+      <WaterHistoryReportCard
+        userId={userId}
+        dailyGoal={dailyGoal}
+        refreshSignal={totalToday}
+      />
     </div>
   );
 }

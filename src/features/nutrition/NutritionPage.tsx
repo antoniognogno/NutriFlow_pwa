@@ -26,6 +26,8 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { offlineDatabase } from '@/features/offline/database'
 import { queueAndSync, removeOutboxItem } from '@/features/offline/useOfflineSync'
+import { NutritionHistoryReportCard } from '@/features/reports/NutritionHistoryReportCard'
+import { validateSafeUserText } from '@/lib/authSecurity'
 import {
   mergeRemoteAndCachedMeals,
   readCachedMeals,
@@ -197,8 +199,13 @@ export function NutritionView() {
   const handleCustomSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!mealName.trim()) return
+    const check = validateSafeUserText(mealName, 'Nome pasto', 80)
+    if (!check.ok) {
+      toast.error(check.error)
+      return
+    }
     await logMeal({
-      meal_name: mealName.trim(),
+      meal_name: check.value,
       description: 'Inserimento rapido',
       calories: Math.max(0, Number.parseInt(calories || '0', 10) || 0),
       protein_g: Math.max(0, Number.parseFloat(protein || '0') || 0),
@@ -319,9 +326,14 @@ export function NutritionView() {
 
   const saveEditMeal = async (meal: MealLog) => {
     if (!userId || isSaving) return
+    const check = validateSafeUserText(editDraft.meal_name, 'Nome pasto', 80)
+    if (!check.ok) {
+      toast.error(check.error)
+      return
+    }
     const updated: MealLog = {
       ...meal,
-      meal_name: editDraft.meal_name.trim() || meal.meal_name,
+      meal_name: check.value || meal.meal_name,
       calories: Math.max(0, Number.parseInt(editDraft.calories || '0', 10) || 0),
       protein_g: Math.max(0, Number.parseFloat(editDraft.protein_g || '0') || 0),
       carbs_g: Math.max(0, Number.parseFloat(editDraft.carbs_g || '0') || 0),
@@ -733,6 +745,12 @@ export function NutritionView() {
           )}
         </CardContent>
       </Card>
+
+      <NutritionHistoryReportCard
+        userId={userId}
+        calorieGoal={goals.calories}
+        todayMealsCount={meals.length}
+      />
     </div>
   )
 }

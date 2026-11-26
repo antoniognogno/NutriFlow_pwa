@@ -7,8 +7,6 @@ import {
   CalendarRange,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Flame,
   ListChecks,
@@ -26,6 +24,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { queueAndSync } from '@/features/offline/useOfflineSync'
+import { PeriodNavigator } from '@/features/reports/PeriodNavigator'
+import { validateSafeUserText } from '@/lib/authSecurity'
 import { focusAndScrollToElement } from '@/lib/focusScroll'
 import { createClient } from '@/lib/supabase/client'
 import { HabitConsistencyChart } from './HabitConsistencyChart'
@@ -66,8 +66,11 @@ export function HabitTrackerSection() {
   const [isManaging, setIsManaging] = useState(false)
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('week')
   const [offsets, setOffsets] = useState<Record<ReportPeriod, number>>({
+    day: 0,
     week: 0,
     month: 0,
+    '3m': 0,
+    '6m': 0,
     year: 0,
   })
   const [showDetailedReport, setShowDetailedReport] = useState(false)
@@ -155,13 +158,6 @@ export function HabitTrackerSection() {
     [habits, logs, reportPeriod],
   )
 
-  const shiftPeriod = (delta: number) => {
-    setOffsets(prev => ({
-      ...prev,
-      [reportPeriod]: Math.min(0, prev[reportPeriod] + delta),
-    }))
-  }
-
   const jumpToOffset = (targetOffset: number) => {
     setOffsets(prev => ({
       ...prev,
@@ -209,14 +205,18 @@ export function HabitTrackerSection() {
   }
 
   const handleAddName = (label: string) => {
-    const clean = label.trim()
-    if (!clean) return
-    const next = addCustomHabit(clean)
+    const check = validateSafeUserText(label, 'Nome abitudine', 60)
+    if (!check.ok) {
+      toast.error(check.error)
+      return
+    }
+    if (!check.value) return
+    const next = addCustomHabit(check.value)
     setHabits(next)
     setNewHabitName('')
     setShowAdd(false)
     window.dispatchEvent(new Event('nutriflow:data-updated'))
-    toast.success(`"${clean}" aggiunta alla routine.`)
+    toast.success(`"${check.value}" aggiunta alla routine.`)
   }
 
   const handleDelete = (id: string) => {
@@ -230,7 +230,12 @@ export function HabitTrackerSection() {
   }
 
   const handleRename = (id: string, label: string) => {
-    const next = updateHabitLabel(id, label)
+    const check = validateSafeUserText(label, 'Nome abitudine', 60)
+    if (!check.ok) {
+      toast.error(check.error)
+      return
+    }
+    const next = updateHabitLabel(id, check.value)
     setHabits(next)
     window.dispatchEvent(new Event('nutriflow:data-updated'))
   }
@@ -412,72 +417,26 @@ export function HabitTrackerSection() {
       </Card>
 
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BarChart3 className="size-4 text-primary" />
-                Costanza & Report
-              </CardTitle>
-              <CardDescription className="text-xs">
-                {reportPeriod === 'week'
-                  ? 'Settimana Lunedì – Domenica'
-                  : reportPeriod === 'month'
-                    ? 'Calendario mensile effettivo'
-                    : 'Panoramica annuale completa'}
-              </CardDescription>
-            </div>
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-border/60 bg-muted/40 p-0.5">
-              {([
-                { key: 'week', label: 'Sett.' },
-                { key: 'month', label: 'Mese' },
-                { key: 'year', label: 'Anno' },
-              ] as const).map(tab => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setReportPeriod(tab.key)}
-                  className={`h-7 rounded-lg px-2 text-xs font-semibold transition-colors ${
-                    reportPeriod === tab.key ? 'bg-primary/20 text-primary' : 'text-muted-foreground'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+        <CardHeader className="space-y-3 pb-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BarChart3 className="size-4 text-primary" />
+              Costanza & Report
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Scorri giorni, settimane, mesi, 3 mesi, 6 mesi o anni
+            </CardDescription>
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/30 px-2 py-1.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Periodo precedente"
-              className="size-7 shrink-0 rounded-lg"
-              onClick={() => shiftPeriod(-1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <div className="flex min-w-0 items-center gap-1.5 text-center">
-              <span className="truncate text-xs font-semibold">{report.periodLabel}</span>
-              {currentOffset === 0 && (
-                <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                  Attuale
-                </span>
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Periodo successivo"
-              disabled={currentOffset >= 0}
-              className="size-7 shrink-0 rounded-lg"
-              onClick={() => shiftPeriod(1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
+          <PeriodNavigator
+            period={reportPeriod}
+            offset={currentOffset}
+            periodLabel={report.periodLabel}
+            onPeriodChange={setReportPeriod}
+            onOffsetChange={nextOffset =>
+              setOffsets(prev => ({ ...prev, [reportPeriod]: Math.min(0, nextOffset) }))
+            }
+          />
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -496,7 +455,14 @@ export function HabitTrackerSection() {
             </div>
           </div>
 
-          {reportPeriod !== 'year' ? (
+          {reportPeriod === 'day' ? (
+            <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-xs">
+              <span className="font-medium text-muted-foreground">{report.periodLabel}</span>
+              <span className="font-mono font-semibold text-foreground">
+                {report.days[0]?.completedCount ?? 0} / {report.days[0]?.totalCount ?? habits.length} abitudini
+              </span>
+            </div>
+          ) : reportPeriod === 'week' || reportPeriod === 'month' ? (
             <div className="space-y-1.5">
               <div className="grid grid-cols-7 gap-1.5 text-center">
                 {WEEKDAY_HEADERS.map((letter, idx) => (
@@ -533,7 +499,13 @@ export function HabitTrackerSection() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-1.5" role="grid" aria-label="Riepilogo 12 mesi">
+            <div
+              className={`grid gap-1.5 ${
+                reportPeriod === '3m' ? 'grid-cols-3' : 'grid-cols-3 sm:grid-cols-4'
+              }`}
+              role="grid"
+              aria-label="Riepilogo multi-mese"
+            >
               {report.days.map(cell => (
                 <div
                   key={cell.dateKey}

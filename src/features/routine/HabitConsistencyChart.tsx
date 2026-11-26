@@ -19,11 +19,17 @@ export function HabitConsistencyChart({ data, period }: HabitConsistencyChartPro
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-semibold text-muted-foreground">
-        {period === 'week'
-          ? 'Andamento giornaliero (Lun–Dom)'
-          : period === 'month'
-            ? 'Andamento settimanale nel mese'
-            : 'Andamento mensile nell’anno'}
+        {period === 'day'
+          ? 'Abitudini del giorno'
+          : period === 'week'
+            ? 'Andamento giornaliero (Lun–Dom)'
+            : period === 'month'
+              ? 'Andamento settimanale nel mese'
+              : period === '3m'
+                ? 'Andamento ultimi 3 mesi'
+                : period === '6m'
+                  ? 'Andamento ultimi 6 mesi'
+                  : 'Andamento mensile nell’anno'}
       </p>
       <div className="h-[175px] w-full">
         <ResponsiveContainer width="100%" height="100%">

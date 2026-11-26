@@ -1,5 +1,10 @@
 export const TOUR_STATE_KEY = 'nutriflow:tour-state-v1'
 export const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000
+export const THREE_MONTHS_MS = 90 * 24 * 60 * 60 * 1000
+const SESSION_ENTRY_MODE_KEY = 'nutriflow:session-entry-mode-v1'
+const CTA_DISMISSED_AT_KEY = 'nutriflow:welcome-cta-dismissed-v1'
+
+export type SessionEntryMode = 'first_visit' | 'inactive_3m' | 'active'
 
 export interface TourState {
   lastActiveAt: number | null
@@ -158,5 +163,44 @@ export function shouldAutoStartTour(state: TourState, now = Date.now()): boolean
 export function requestAppTourStart(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('nutriflow:start-tour'))
+  }
+}
+
+export function evaluateSessionEntryMode(state: TourState, now = Date.now()): SessionEntryMode {
+  if (state.lastActiveAt === null) return 'first_visit'
+  if (now - state.lastActiveAt >= THREE_MONTHS_MS) return 'inactive_3m'
+  return 'active'
+}
+
+export function captureAndGetSessionEntryMode(now = Date.now()): SessionEntryMode {
+  try {
+    const cached = sessionStorage.getItem(SESSION_ENTRY_MODE_KEY)
+    if (cached === 'first_visit' || cached === 'inactive_3m' || cached === 'active') {
+      return cached
+    }
+    const mode = evaluateSessionEntryMode(readTourState(), now)
+    sessionStorage.setItem(SESSION_ENTRY_MODE_KEY, mode)
+    return mode
+  } catch {
+    return evaluateSessionEntryMode(readTourState(), now)
+  }
+}
+
+export function isWelcomeCtaDismissed(now = Date.now()): boolean {
+  try {
+    const raw = localStorage.getItem(CTA_DISMISSED_AT_KEY)
+    if (!raw) return false
+    const dismissedAt = Number(raw)
+    return Number.isFinite(dismissedAt) && now - dismissedAt < ONE_MONTH_MS
+  } catch {
+    return false
+  }
+}
+
+export function dismissWelcomeCta(now = Date.now()): void {
+  try {
+    localStorage.setItem(CTA_DISMISSED_AT_KEY, String(now))
+  } catch {
+    // Ignore storage issues
   }
 }

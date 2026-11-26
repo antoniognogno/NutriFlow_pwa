@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Check,
@@ -22,6 +23,14 @@ import {
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { NutriFlowLogo } from '@/components/NutriFlowLogo'
+import { ProfileAvatar } from '@/components/ProfileAvatar'
+import { AvatarCustomizer } from '@/features/profile/AvatarCustomizer'
+import {
+  readProfileAvatar,
+  saveProfileAvatar,
+  type ProfileAvatarConfig,
+} from '@/features/profile/avatarStore'
+import { validateSafeUserText } from '@/lib/authSecurity'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -82,6 +91,7 @@ export default function SettingsPage() {
   const [dietType, setDietType] = useState(() => readCachedProfileSettings().diet_type)
   const [allergies, setAllergies] = useState(() => readCachedProfileSettings().allergies.join(', '))
   const [dislikedFoods, setDislikedFoods] = useState(() => readCachedProfileSettings().disliked_foods.join(', '))
+  const [avatarConfig, setAvatarConfig] = useState<ProfileAvatarConfig>(() => readProfileAvatar())
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateStatusText, setUpdateStatusText] = useState<string | null>(null)
@@ -161,10 +171,23 @@ export default function SettingsPage() {
         upsertWeightEntry(savedBody.weightKg)
       }
 
-      const cleanedAllergies = allergies.split(',').map(s => s.trim()).filter(Boolean)
-      const cleanedDisliked = dislikedFoods.split(',').map(s => s.trim()).filter(Boolean)
-      const cleanUsername = username.trim() || 'Atleta'
-      const cleanDiet = dietType.trim()
+      const usernameCheck = validateSafeUserText(username, 'Nome visualizzato', 40)
+      const dietCheck = validateSafeUserText(dietType, 'Stile alimentare', 50)
+      const allergiesCheck = validateSafeUserText(allergies, 'Allergie', 160)
+      const dislikedCheck = validateSafeUserText(dislikedFoods, 'Cibi da evitare', 160)
+      const failedCheck = [usernameCheck, dietCheck, allergiesCheck, dislikedCheck].find(c => !c.ok)
+      if (failedCheck) {
+        toast.error(failedCheck.error)
+        setIsSaving(false)
+        return
+      }
+
+      const cleanedAllergies = allergiesCheck.value.split(',').map(s => s.trim()).filter(Boolean)
+      const cleanedDisliked = dislikedCheck.value.split(',').map(s => s.trim()).filter(Boolean)
+      const cleanUsername = usernameCheck.value || 'Atleta'
+      const cleanDiet = dietCheck.value
+
+      saveProfileAvatar(avatarConfig)
 
       saveCachedProfileSettings({
         username: cleanUsername,
@@ -327,65 +350,125 @@ export default function SettingsPage() {
       </header>
 
       {!isProfileEditorOpen ? (
-        <Card className="nf-pop-enter" data-tour="settings-profile-card">
+        <Card className="nf-pop-enter border-primary/25" data-tour="settings-profile-card">
           <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <User className="size-4 text-primary" />
-                  Profilo & Obiettivi
-                </CardTitle>
-                <CardDescription className="mt-0.5 text-xs">
-                  {username.trim() || 'Atleta'} · {(waterGoalMl / 1000).toFixed(1)}L acqua · {weeklyWorkoutGoal}× allenamenti/sett
-                </CardDescription>
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                <ProfileAvatar config={avatarConfig} className="size-10" />
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="truncate text-base">
+                    {username.trim() || 'Atleta'}
+                  </CardTitle>
+                  <CardDescription className="truncate text-xs">
+                    Profilo & Obiettivi{dietType.trim() ? ` · ${dietType.trim()}` : ''}
+                  </CardDescription>
+                </div>
               </div>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={() => setIsProfileEditorOpen(true)}
-                className="h-9 shrink-0 rounded-xl border-primary/40 bg-primary/10 px-3 text-xs text-primary hover:bg-primary/20"
+                className="h-9 shrink-0 rounded-xl border-primary/40 bg-primary/10 px-2.5 text-xs text-primary hover:bg-primary/20"
               >
                 <SlidersHorizontal className="mr-1.5 size-3.5" />
                 Personalizza
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2 pt-0 text-xs">
-            {weightKgInput && (
-              <span className="rounded-lg bg-muted/60 px-2.5 py-1 font-mono text-foreground">
-                Peso: {weightKgInput} kg
-              </span>
-            )}
-            {targetWeightInput && (
-              <span className="rounded-lg bg-emerald-500/15 px-2.5 py-1 font-mono text-emerald-700 dark:text-emerald-400">
-                Target: {targetWeightInput} kg
-              </span>
-            )}
-            {heightCmInput && (
-              <span className="rounded-lg bg-muted/60 px-2.5 py-1 font-mono text-muted-foreground">
-                {heightCmInput} cm
-              </span>
-            )}
-            {dietType.trim() && (
-              <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-primary">
-                {dietType.trim()}
-              </span>
-            )}
+          <CardContent className="pt-0">
+            {(() => {
+              const parsedWeight = Number.parseFloat(weightKgInput)
+              const parsedTarget = Number.parseFloat(targetWeightInput)
+              const parsedHeight = Number.parseInt(heightCmInput, 10)
+              const validWeight = Number.isFinite(parsedWeight) ? parsedWeight : null
+              const validTarget = Number.isFinite(parsedTarget) ? parsedTarget : null
+              const validHeight = Number.isFinite(parsedHeight) ? parsedHeight : null
+              const bmi = computeBmi(validWeight, validHeight)
+              const bmiCategory =
+                bmi === null
+                  ? 'Inserisci peso/altezza'
+                  : bmi < 18.5
+                    ? 'Sottopeso'
+                    : bmi < 25
+                      ? 'Normopeso'
+                      : bmi < 30
+                        ? 'Sovrappeso'
+                        : 'Obesità'
+              const gap =
+                validWeight !== null && validTarget !== null
+                  ? Math.round((validWeight - validTarget) * 10) / 10
+                  : null
+
+              return (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-2.5 dark:bg-[#111f2c]/80">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Scale className="size-3 text-primary" />
+                      Peso & Target
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-foreground">
+                      {validWeight !== null ? `${validWeight} kg` : '—'}
+                      {validTarget !== null ? ` → ${validTarget} kg` : ''}
+                    </p>
+                    <p className="mt-0.5 text-[10.5px] text-emerald-600 dark:text-emerald-400">
+                      {gap === null
+                        ? 'Imposta target peso'
+                        : gap === 0
+                          ? 'Target raggiunto'
+                          : `${gap > 0 ? `-${gap.toFixed(1)}` : `+${Math.abs(gap).toFixed(1)}`} kg al target`}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-2.5 dark:bg-[#111f2c]/80">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Target className="size-3 text-amber-500" />
+                      BMI stimato
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-primary">
+                      {bmi !== null ? bmi.toFixed(1) : '—'}
+                    </p>
+                    <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground">
+                      {bmiCategory}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-2.5 dark:bg-[#111f2c]/80">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Droplets className="size-3 text-sky-500" />
+                      Obiettivo acqua
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-sky-600 dark:text-sky-400">
+                      {(waterGoalMl / 1000).toFixed(1)} L / giorno
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 bg-muted/40 p-2.5 dark:bg-[#111f2c]/80">
+                    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Dumbbell className="size-3 text-emerald-500" />
+                      Allenamenti
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                      {weeklyWorkoutGoal}× / settimana
+                    </p>
+                  </div>
+                </div>
+              )
+            })()}
           </CardContent>
         </Card>
       ) : (
         <form onSubmit={e => void handleSave(e)} className="nf-pop-enter space-y-4">
-          <Card className="border-primary/35">
+          <Card className="overflow-hidden border-primary/35">
             <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <User className="size-4 text-primary" />
-                    Personalizza profilo & obiettivi
+                    <User className="size-4 shrink-0 text-primary" />
+                    <span className="truncate">Personalizza profilo & obiettivi</span>
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Personalizza nome e target giornalieri/settimanali
+                    Icona profilo, nome e target giornalieri/settimanali
                   </CardDescription>
                 </div>
                 <Button
@@ -394,7 +477,7 @@ export default function SettingsPage() {
                   size="sm"
                   onClick={() => setIsProfileEditorOpen(false)}
                   aria-label="Chiudi personalizzazione profilo"
-                  className="h-8 rounded-xl px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-8 shrink-0 rounded-xl px-2.5 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <X className="mr-1 size-3.5" />
                   Chiudi
@@ -402,6 +485,8 @@ export default function SettingsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+            <AvatarCustomizer value={avatarConfig} onChange={setAvatarConfig} />
+
             <div className="space-y-1.5">
               <Label htmlFor="settings-username">Nome visualizzato</Label>
               <Input
@@ -484,16 +569,16 @@ export default function SettingsPage() {
                   className="h-10 font-mono"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1.5">
                 <Label className="text-xs">Sesso</Label>
-                <div className="grid h-10 grid-cols-2 gap-1">
+                <div className="grid h-10 min-w-0 grid-cols-2 gap-1">
                   {(['m', 'f'] as const).map(code => (
                     <Button
                       key={code}
                       type="button"
                       size="sm"
                       variant={sexInput === code ? 'secondary' : 'outline'}
-                      className={`h-10 rounded-lg px-0 text-xs uppercase ${
+                      className={`h-10 w-full min-w-0 rounded-lg px-0 text-xs uppercase ${
                         sexInput === code ? 'border-primary/40 bg-primary/15 text-primary' : ''
                       }`}
                       onClick={() => setSexInput(prev => (prev === code ? '' : code))}
@@ -537,15 +622,15 @@ export default function SettingsPage() {
                 <Droplets className="size-3.5 text-sky-400" />
                 Obiettivo acqua giornaliero
               </Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {WATER_GOAL_OPTIONS.map(ml => (
                   <Button
                     key={ml}
                     type="button"
                     size="sm"
                     variant={waterGoalMl === ml ? 'secondary' : 'outline'}
-                    className={`h-9 rounded-xl font-mono text-xs ${
-                      waterGoalMl === ml ? 'border-sky-500/40 bg-sky-500/15 text-sky-300' : ''
+                    className={`h-9 min-w-0 rounded-xl px-1.5 font-mono text-xs ${
+                      waterGoalMl === ml ? 'border-sky-500/40 bg-sky-500/15 text-sky-600 dark:text-sky-300' : ''
                     }`}
                     onClick={() => setWaterGoalMl(ml)}
                   >
@@ -560,15 +645,15 @@ export default function SettingsPage() {
                 <Dumbbell className="size-3.5 text-emerald-400" />
                 Allenamenti a settimana
               </Label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {WORKOUT_GOAL_OPTIONS.map(count => (
                   <Button
                     key={count}
                     type="button"
                     size="sm"
                     variant={weeklyWorkoutGoal === count ? 'secondary' : 'outline'}
-                    className={`h-9 rounded-xl font-mono text-xs ${
-                      weeklyWorkoutGoal === count ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300' : ''
+                    className={`h-9 min-w-0 rounded-xl px-1.5 font-mono text-xs ${
+                      weeklyWorkoutGoal === count ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : ''
                     }`}
                     onClick={() => setWeeklyWorkoutGoal(count)}
                   >
@@ -705,6 +790,15 @@ export default function SettingsPage() {
           {updateStatusText && (
             <p className="text-center text-[11px] text-muted-foreground">{updateStatusText}</p>
           )}
+
+          <div className="flex items-center justify-center gap-4 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
+            <Link href="/privacy" className="underline underline-offset-4 hover:text-foreground">
+              Privacy Policy (GDPR UE)
+            </Link>
+            <Link href="/terms" className="underline underline-offset-4 hover:text-foreground">
+              Termini di Servizio
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

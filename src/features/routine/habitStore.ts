@@ -1,5 +1,6 @@
 import { formatLocalDateKey } from '@/app/components/dashboard/home/recentWinsUtils'
 import { markCloudStateDirty } from '@/features/offline/cloudStateSync'
+import { validateSafeUserText } from '@/lib/authSecurity'
 
 export interface HabitItem {
   id: string
@@ -8,7 +9,7 @@ export interface HabitItem {
 }
 
 export type HabitLogsByDate = Record<string, string[]>
-export type ReportPeriod = 'week' | 'month' | 'year'
+export type ReportPeriod = 'day' | 'week' | 'month' | '3m' | '6m' | 'year'
 
 export const HABITS_KEY = 'nutriflow:habits-v1'
 export const HABIT_LOGS_KEY = 'nutriflow:habit-logs-v1'
@@ -50,12 +51,12 @@ export function saveHabits(habits: HabitItem[]): void {
 }
 
 export function addCustomHabit(label: string): HabitItem[] {
-  const clean = label.trim()
-  if (!clean) return readHabits()
+  const checked = validateSafeUserText(label, 'Nome abitudine', 60)
+  if (!checked.ok || !checked.value) return readHabits()
   const existing = readHabits()
   const created: HabitItem = {
     id: `habit-${crypto.randomUUID()}`,
-    label: clean,
+    label: checked.value,
     xp: 15,
   }
   const next = [...existing, created]
@@ -70,9 +71,9 @@ export function removeHabit(id: string): HabitItem[] {
 }
 
 export function updateHabitLabel(id: string, label: string): HabitItem[] {
-  const clean = label.trim()
-  if (!clean) return readHabits()
-  const next = readHabits().map(item => (item.id === id ? { ...item, label: clean } : item))
+  const checked = validateSafeUserText(label, 'Nome abitudine', 60)
+  if (!checked.ok || !checked.value) return readHabits()
+  const next = readHabits().map(item => (item.id === id ? { ...item, label: checked.value } : item))
   saveHabits(next)
   return next
 }
@@ -320,7 +321,49 @@ function summarizeCorePeriod(
   let activeDays = 0
   let periodLabel = ''
 
-  if (period === 'week') {
+  if (period === 'day') {
+    const cursor = new Date(todayMid)
+    cursor.setDate(cursor.getDate() + safeOffset)
+    const dateKey = formatLocalDateKey(cursor)
+    const validCompleted = (logs[dateKey] ?? []).filter(id => validIds.has(id))
+    const completedCount = validCompleted.length
+    elapsedDays = 1
+    if (completedCount > 0) activeDays = 1
+    if (completedCount >= safeHabits) perfectDays = 1
+    totalCheckins = completedCount
+    for (const id of validCompleted) {
+      perHabitCounts.set(id, 1)
+    }
+    periodLabel =
+      safeOffset === 0
+        ? 'Oggi'
+        : safeOffset === -1
+          ? 'Ieri'
+          : capitalize(
+              new Intl.DateTimeFormat('it-IT', {
+                weekday: 'short',
+                day: '2-digit',
+                month: 'short',
+              }).format(cursor),
+            )
+    days.push({
+      dateKey,
+      dayLabel: String(cursor.getDate()),
+      subLabel: periodLabel,
+      completedCount,
+      totalCount: safeHabits,
+      level: ratioToLevel(completedCount, safeHabits),
+    })
+    for (const h of habits) {
+      const done = validCompleted.includes(h.id)
+      chartSeries.push({
+        label: h.label.slice(0, 8),
+        pct: done ? 100 : 0,
+        checkins: done ? 1 : 0,
+        perfectDays: done ? 1 : 0,
+      })
+    }
+  } else if (period === 'week') {
     const monday = getMondayOfWeek(todayMid, safeOffset)
     const sunday = new Date(monday)
     sunday.setDate(sunday.getDate() + 6)
@@ -418,6 +461,62 @@ function summarizeCorePeriod(
         pct: bucket.elapsed > 0 ? Math.round((bucket.checkins / (bucket.elapsed * safeHabits)) * 100) : 0,
         checkins: bucket.checkins,
         perfectDays: bucket.perfect,
+      })
+    }
+  } else if (period === '3m' || period === '6m') {
+    const span = period === '3m' ? 3 : 6
+    const endMonthExclusive = new Date(todayMid.getFullYear(), todayMid.getMonth() + safeOffset * span + 1, 1)
+    const startMonth = new Date(endMonthExclusive.getFullYear(), endMonthExclusive.getMonth() - span, 1)
+    const lastMonth = new Date(endMonthExclusive.getFullYear(), endMonthExclusive.getMonth() - 1, 1)
+    periodLabel =
+      startMonth.getFullYear() === lastMonth.getFullYear()
+        ? `${MONTH_SHORT[startMonth.getMonth()]}–${MONTH_SHORT[lastMonth.getMonth()]} ${lastMonth.getFullYear()}`
+        : `${MONTH_SHORT[startMonth.getMonth()]} ${String(startMonth.getFullYear()).slice(-2)}–${MONTH_SHORT[lastMonth.getMonth()]} ${String(lastMonth.getFullYear()).slice(-2)}`
+
+    for (let i = 0; i < span; i += 1) {
+      const mDate = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1)
+      const y = mDate.getFullYear()
+      const m = mDate.getMonth()
+      const daysInMonth = new Date(y, m + 1, 0).getDate()
+      let monthCheckins = 0
+      let monthElapsed = 0
+      let monthPerfect = 0
+
+      for (let dayNum = 1; dayNum <= daysInMonth; dayNum += 1) {
+        const cursor = new Date(y, m, dayNum)
+        if (cursor > todayMid) continue
+        monthElapsed += 1
+        elapsedDays += 1
+        const dateKey = formatLocalDateKey(cursor)
+        const validCompleted = (logs[dateKey] ?? []).filter(id => validIds.has(id))
+        const completedCount = validCompleted.length
+        monthCheckins += completedCount
+        totalCheckins += completedCount
+        if (completedCount > 0) activeDays += 1
+        if (completedCount >= safeHabits) {
+          monthPerfect += 1
+          perfectDays += 1
+        }
+        for (const id of validCompleted) {
+          perHabitCounts.set(id, (perHabitCounts.get(id) ?? 0) + 1)
+        }
+      }
+
+      const monthPct = monthElapsed > 0 ? Math.round((monthCheckins / (monthElapsed * safeHabits)) * 100) : 0
+      days.push({
+        dateKey: `${y}-${String(m + 1).padStart(2, '0')}`,
+        dayLabel: MONTH_SHORT[m],
+        subLabel: `${monthPct}%`,
+        completedCount: monthCheckins,
+        totalCount: Math.max(1, monthElapsed * safeHabits),
+        level: ratioToLevel(monthCheckins, Math.max(1, monthElapsed * safeHabits)),
+        isFuture: monthElapsed === 0,
+      })
+      chartSeries.push({
+        label: MONTH_SHORT[m],
+        pct: monthPct,
+        checkins: monthCheckins,
+        perfectDays: monthPerfect,
       })
     }
   } else {
@@ -539,6 +638,41 @@ export function buildHistoricalPeriods(
   const safeHabits = Math.max(1, habits.length)
   const validIds = new Set(habits.map(h => h.id))
   const todayMid = toMidnight(today)
+
+  if (period === 'day') {
+    const summaries: HistoricalPeriodSummary[] = []
+    for (let offset = 0; offset > -7; offset -= 1) {
+      const rep = summarizeCorePeriod(logs, habits, 'day', todayMid, offset, false)
+      summaries.push({
+        key: rep.days[0]?.dateKey ?? String(offset),
+        offset,
+        label: rep.periodLabel,
+        completionPct: rep.completionPct,
+        totalCheckins: rep.totalCheckins,
+        perfectDays: rep.perfectDays,
+        daysTracked: 1,
+      })
+    }
+    return summaries
+  }
+
+  if (period === '3m' || period === '6m') {
+    const summaries: HistoricalPeriodSummary[] = []
+    for (let offset = 0; offset > -4; offset -= 1) {
+      const rep = summarizeCorePeriod(logs, habits, period, todayMid, offset, false)
+      if (offset < 0 && rep.totalCheckins === 0) continue
+      summaries.push({
+        key: `${period}:${offset}`,
+        offset,
+        label: rep.periodLabel,
+        completionPct: rep.completionPct,
+        totalCheckins: rep.totalCheckins,
+        perfectDays: rep.perfectDays,
+        daysTracked: rep.elapsedDays,
+      })
+    }
+    return summaries
+  }
 
   if (period === 'week') {
     const summaries: HistoricalPeriodSummary[] = []

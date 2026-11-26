@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { ONE_MONTH_MS, shouldAutoStartTour, TOUR_STEPS } from './tourStore'
+import {
+  evaluateSessionEntryMode,
+  ONE_MONTH_MS,
+  shouldAutoStartTour,
+  THREE_MONTHS_MS,
+  TOUR_STEPS,
+} from './tourStore'
 
 describe('App Guided Tour & 30-day inactivity trigger', () => {
   it('ships complete tour steps covering navigation, workout, stats, routine, nutrition, water, and settings', () => {
@@ -36,5 +42,13 @@ describe('App Guided Tour & 30-day inactivity trigger', () => {
         now,
       ),
     ).toBe(false)
+
+    expect(evaluateSessionEntryMode({ lastActiveAt: null, lastCompletedOrSkippedAt: null }, now)).toBe('first_visit')
+    expect(
+      evaluateSessionEntryMode({ lastActiveAt: now - (THREE_MONTHS_MS + 60_000), lastCompletedOrSkippedAt: null }, now),
+    ).toBe('inactive_3m')
+    expect(
+      evaluateSessionEntryMode({ lastActiveAt: now - 86_400_000, lastCompletedOrSkippedAt: null }, now),
+    ).toBe('active')
   })
 })

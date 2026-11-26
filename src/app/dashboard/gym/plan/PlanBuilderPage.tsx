@@ -1,19 +1,39 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowDown, ArrowUp, Check, Clock3, Link2, PlusCircle, Trash2, Unlink2 } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  Check,
+  ClipboardPaste,
+  Clock3,
+  Copy,
+  Link2,
+  PlusCircle,
+  Trash2,
+  Unlink2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  GEMINI_EXAMPLE_OUTPUT,
+  GEMINI_FORMAT_GUIDE,
+  GEMINI_PROMPT_TEMPLATE,
+  parseAiWorkoutPlan,
+} from '@/features/workouts/aiPlanParser'
 import { ExerciseNameField } from '@/features/workouts/ExerciseNameField'
 import { readExerciseMeta, saveExerciseMeta } from '@/features/workouts/exerciseNotesStore'
 import { findCachedPlan, upsertCachedPlan } from '@/features/workouts/workoutOfflineCache'
 import { offlineDatabase } from '@/features/offline/database'
 import { queueAndSync } from '@/features/offline/useOfflineSync'
 import { createClient } from '@/lib/supabase/client'
+import { validateSafeUserText } from '@/lib/authSecurity'
 import type { PlanWithWorkoutsAndExercises } from '@/lib/supabase/types'
 
 interface ExerciseForm {
@@ -68,6 +88,7 @@ const EMPTY_EXERCISE: ExerciseForm = {
 
 export default function PlanBuilderPage() {
   const { planId } = useParams<{ planId?: string }>()
+  const [searchParams] = useSearchParams()
   const isEditMode = Boolean(planId && planId !== 'new')
   const navigate = useNavigate()
   const supabase = createClient()
@@ -75,8 +96,39 @@ export default function PlanBuilderPage() {
   const [planName, setPlanName] = useState('La mia scheda')
   const [workouts, setWorkouts] = useState<WorkoutForm[]>(() => DEFAULT_CREATE_WORKOUTS)
   const [originalWorkoutIds, setOriginalWorkoutIds] = useState<string[]>([])
+  const [showAiImport, setShowAiImport] = useState(() => !isEditMode && searchParams.get('import') === 'ai')
+  const [showAiGuide, setShowAiGuide] = useState(false)
+  const [aiRawText, setAiRawText] = useState('')
   const [isLoading, setIsLoading] = useState(isEditMode)
   const [isSaving, setIsSaving] = useState(false)
+
+  const handleCopyGeminiPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(GEMINI_PROMPT_TEMPLATE)
+      toast.success('Prompt base per Gemini copiato negli appunti!')
+    } catch {
+      toast.info('Seleziona e copia il prompt dalla guida qui sotto.')
+      setShowAiGuide(true)
+    }
+  }
+
+  const handleImportFromGemini = () => {
+    const parsed = parseAiWorkoutPlan(aiRawText)
+    if (!parsed) {
+      toast.error('Non riconosco nessun esercizio nel testo incollato. Controlla la guida al formato.')
+      return
+    }
+    setPlanName(parsed.planName)
+    setWorkouts(
+      parsed.workouts.map(w => ({
+        name: w.name,
+        exercises: w.exercises,
+      })),
+    )
+    setShowAiImport(false)
+    const exerciseCount = parsed.workouts.reduce((sum, w) => sum + w.exercises.length, 0)
+    toast.success(`Scheda importata: ${parsed.workouts.length} giorni e ${exerciseCount} esercizi!`)
+  }
 
   useEffect(() => {
     if (!isEditMode || !planId) return
@@ -277,6 +329,35 @@ export default function PlanBuilderPage() {
       toast.error('Inserisci il nome della scheda.')
       return
     }
+    const planNameCheck = validateSafeUserText(planName, 'Nome scheda', 80)
+    if (!planNameCheck.ok) {
+      toast.error(planNameCheck.error)
+      return
+    }
+    for (const w of workouts) {
+      if (w.name.trim()) {
+        const wc = validateSafeUserText(w.name, 'Nome giorno', 80)
+        if (!wc.ok) {
+          toast.error(wc.error)
+          return
+        }
+      }
+      for (const ex of w.exercises) {
+        for (const [val, label] of [
+          [ex.exercise_name, 'Nome esercizio'],
+          [ex.rir, 'RIR'],
+          [ex.note, 'Nota esercizio'],
+        ] as const) {
+          if (val.trim()) {
+            const c = validateSafeUserText(val, label, 120)
+            if (!c.ok) {
+              toast.error(c.error)
+              return
+            }
+          }
+        }
+      }
+    }
     setIsSaving(true)
     try {
       const { data: { session: authSession } } = await supabase.auth.getSession()
@@ -429,18 +510,136 @@ export default function PlanBuilderPage() {
             {isEditMode ? 'Modifica scheda' : 'Nuova scheda'}
           </h1>
           <p className="text-xs text-muted-foreground">
-            Recupero personalizzato (es. 150s), superserie, RIR e note tecniche
+            Recupero personalizzato (es. 150s), superserie, RIR o import rapido da Gemini
           </p>
         </div>
-        <Button
-          type="submit"
-          disabled={isSaving}
-          className="h-10 rounded-xl bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-500"
-        >
-          <Check className="mr-1.5 size-4" />
-          {isSaving ? 'Salvo...' : isEditMode ? 'Salva modifiche' : 'Crea scheda'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowAiImport(curr => !curr)}
+            className="h-10 rounded-xl border-primary/40 bg-primary/10 px-3 text-xs text-primary hover:bg-primary/20"
+          >
+            <ClipboardPaste className="mr-1.5 size-4" />
+            {showAiImport ? 'Chiudi import' : 'Importa da Gemini'}
+          </Button>
+          <Button
+            type="submit"
+            disabled={isSaving}
+            className="h-10 rounded-xl bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-500"
+          >
+            <Check className="mr-1.5 size-4" />
+            {isSaving ? 'Salvo...' : isEditMode ? 'Salva modifiche' : 'Crea scheda'}
+          </Button>
+        </div>
       </header>
+
+      {showAiImport && (
+        <Card className="nf-pop-enter border-primary/35 bg-card dark:bg-[#0d1722]">
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ClipboardPaste className="size-4 text-primary" />
+                  Aggiunta rapida da Gemini
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Chiedi la scheda a Gemini, incolla qui il testo generato e compiliamo tutto in 1 tap.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAiGuide(curr => !curr)}
+                className="h-8 rounded-lg px-2.5 text-xs text-primary"
+              >
+                <BookOpen className="mr-1 size-3.5" />
+                {showAiGuide ? 'Nascondi guida' : 'Guida & Prompt base'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleCopyGeminiPrompt()}
+                className="h-9 rounded-xl border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+              >
+                <Copy className="mr-1.5 size-3.5" />
+                Copia prompt base per Gemini
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setAiRawText(GEMINI_EXAMPLE_OUTPUT)}
+                className="h-9 rounded-xl text-xs"
+              >
+                Carica testo di esempio
+              </Button>
+            </div>
+
+            {showAiGuide && (
+              <div className="nf-pop-enter space-y-2 rounded-xl border border-border/60 bg-muted/40 p-3 text-xs dark:bg-[#111f2c]">
+                <p className="font-semibold text-foreground">
+                  Come fare su Gemini in 3 passi:
+                </p>
+                <ol className="list-inside list-decimal space-y-1 text-muted-foreground">
+                  <li>Premi &quot;Copia prompt base per Gemini&quot; e incollalo nella chat di Gemini compilando obiettivo e giorni.</li>
+                  <li>Alla fine di un tuo prompt esistente puoi anche aggiungere semplicemente questo formato:</li>
+                </ol>
+                <pre className="overflow-x-auto rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[11px] text-foreground">
+                  {GEMINI_FORMAT_GUIDE}
+                </pre>
+                <p className="text-[11px] text-muted-foreground">
+                  3. Copia la scheda generata da Gemini, incollala qui sotto e premi &quot;Importa nella scheda&quot;.
+                </p>
+                <details className="pt-1">
+                  <summary className="cursor-pointer font-medium text-primary">
+                    Vedi testo completo del prompt base
+                  </summary>
+                  <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-background/80 p-2 font-mono text-[11px] text-muted-foreground">
+                    {GEMINI_PROMPT_TEMPLATE}
+                  </pre>
+                </details>
+              </div>
+            )}
+
+            <Textarea
+              aria-label="Incolla qui la scheda generata da Gemini"
+              value={aiRawText}
+              onChange={e => setAiRawText(e.target.value)}
+              placeholder={`Incolla qui la scheda generata da Gemini...\nEsempio:\n${GEMINI_FORMAT_GUIDE}`}
+              className="min-h-[140px] font-mono text-xs"
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAiImport(false)}
+                className="h-9 rounded-xl text-xs"
+              >
+                Annulla
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleImportFromGemini}
+                disabled={!aiRawText.trim()}
+                className="h-9 rounded-xl bg-primary px-3.5 text-xs text-primary-foreground hover:bg-primary/90"
+              >
+                <ClipboardPaste className="mr-1.5 size-3.5" />
+                Importa nella scheda
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-4">

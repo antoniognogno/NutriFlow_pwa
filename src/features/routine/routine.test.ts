@@ -97,6 +97,18 @@ describe('Habit Tracker, Body Weight Tracker & Profile Goals', () => {
     expect(yearReport.chartSeries).toHaveLength(12)
     expect(yearReport.totalCheckins).toBe(4)
 
+    // Day & 3-month / 6-month reports
+    const dayReport = buildPeriodReport(logs, updatedHabits, 'day', today, -1)
+    expect(dayReport.periodLabel).toBe('Ieri')
+    expect(dayReport.totalCheckins).toBe(1)
+
+    const threeMonthReport = buildPeriodReport(logs, updatedHabits, '3m', today, 0)
+    expect(threeMonthReport.chartSeries).toHaveLength(3)
+    expect(threeMonthReport.totalCheckins).toBe(4)
+
+    const sixMonthReport = buildPeriodReport(logs, updatedHabits, '6m', today, 0)
+    expect(sixMonthReport.chartSeries).toHaveLength(6)
+
     const monthHistory = buildHistoricalPeriods(logs, updatedHabits, 'month', today)
     expect(monthHistory[0].key).toBe('2026-11')
     expect(monthHistory[0].totalCheckins).toBe(3)

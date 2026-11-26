@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { sanitizePlainText } from "@/lib/authSecurity";
 
 // Importeremo i nostri nuovi componenti
 import { OnboardingStepper } from "../components/OnboardingStepper";
@@ -52,32 +53,38 @@ export default function OnboardingPage() {
 
   // Funzione finale per salvare tutto su Supabase
   const handleSaveProfile = async () => {
-  console.log("Tentativo di salvataggio per lutente ID:", userId);
-  console.log("Dati da salvare:", formData);
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log("user.id da Supabase:", user?.id);
-  console.log("userId passato nell'upsert:", userId);
-    if (!userId) {
-      alert("Errore: Utente non trovato.");
+    const { data: { session } } = await supabase.auth.getSession();
+    const verifiedUserId = session?.user?.id;
+    if (!verifiedUserId) {
+      alert("Errore: sessione non valida o scaduta.");
+      router.push('/login');
       return;
     }
 
-    const allergiesArray = formData.allergies.split(',').map(item => item.trim()).filter(Boolean);
-    const dislikedFoodsArray = formData.disliked_foods.split(',').map(item => item.trim()).filter(Boolean);
+    const allergiesArray = formData.allergies
+      .split(',')
+      .map(item => sanitizePlainText(item, 40))
+      .filter(Boolean)
+      .slice(0, 20);
+    const dislikedFoodsArray = formData.disliked_foods
+      .split(',')
+      .map(item => sanitizePlainText(item, 40))
+      .filter(Boolean)
+      .slice(0, 20);
 
     const { error } = await supabase
       .from('profiles')
       .upsert([{
-        id: userId,
-        username: formData.username,
-        diet_type: formData.diet_type,
+        id: verifiedUserId,
+        username: sanitizePlainText(formData.username, 40) || 'Atleta',
+        diet_type: sanitizePlainText(formData.diet_type, 40) || null,
         allergies: allergiesArray,
         disliked_foods: dislikedFoodsArray,
         updated_at: new Date().toISOString(),
       }]);
 
     if (error) {
-      alert("Errore durante il salvataggio: " + error.message);
+      alert("Errore durante il salvataggio del profilo.");
     } else {
       router.push('/dashboard');
     }

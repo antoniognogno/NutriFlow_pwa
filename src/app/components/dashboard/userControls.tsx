@@ -1,13 +1,14 @@
 'use client'
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
-// Componenti UI
+import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { readProfileAvatar, type ProfileAvatarConfig } from "@/features/profile/avatarStore";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,17 @@ import {
 export function UserControls() {
   const router = useRouter();
   const supabase = createClient();
+  const [avatarConfig, setAvatarConfig] = useState<ProfileAvatarConfig>(() => readProfileAvatar());
+
+  useEffect(() => {
+    const refreshAvatar = () => setAvatarConfig(readProfileAvatar());
+    window.addEventListener('nutriflow:avatar-updated', refreshAvatar);
+    window.addEventListener('nutriflow:data-updated', refreshAvatar);
+    return () => {
+      window.removeEventListener('nutriflow:avatar-updated', refreshAvatar);
+      window.removeEventListener('nutriflow:data-updated', refreshAvatar);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -31,13 +43,8 @@ export function UserControls() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-          <Avatar className="h-9 w-9">
-            <AvatarImage src="" alt="@username" /> 
-            <AvatarFallback>
-              <User className="h-5 w-5"/>
-            </AvatarFallback>
-          </Avatar>
+        <Button variant="ghost" aria-label="Menu profilo" className="relative size-9 rounded-full p-0">
+          <ProfileAvatar config={avatarConfig} className="size-9" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>

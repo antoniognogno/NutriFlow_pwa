@@ -1,3 +1,5 @@
+import { containsCodeOrSql } from '@/lib/authSecurity'
+
 export interface OpenFoodProduct {
   id: string
   name: string
@@ -20,23 +22,40 @@ interface RawOffProduct {
   }
 }
 
+const searchCache = new Map<string, OpenFoodProduct[]>()
+let lastSearchTimestamp = 0
+const SEARCH_COOLDOWN_MS = 1200
+
 export async function searchOpenFoodFacts(query: string): Promise<OpenFoodProduct[]> {
   const clean = query.trim()
-  if (clean.length < 2) return []
+  if (clean.length < 2 || clean.length > 60) return []
+  if (containsCodeOrSql(clean)) {
+    throw new Error('Ricerca non valida: rimuovi caratteri speciali o codice.')
+  }
+
+  const cacheKey = clean.toLowerCase()
+  const cached = searchCache.get(cacheKey)
+  if (cached) return cached
+
+  const now = Date.now()
+  if (now - lastSearchTimestamp < SEARCH_COOLDOWN_MS) {
+    throw new Error('Attendi un secondo prima di fare un’altra ricerca.')
+  }
+  lastSearchTimestamp = now
 
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 7000)
+  const timeout = window.setTimeout(() => controller.abort(), 5000)
 
   try {
     const url =
       `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(clean)}` +
-      '&search_simple=1&action=process&json=1&page_size=8&fields=code,product_name,brands,nutriments'
+      '&search_simple=1&action=process&json=1&page_size=6&fields=code,product_name,brands,nutriments'
     const res = await fetch(url, { signal: controller.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as { products?: RawOffProduct[] }
     const products = Array.isArray(data.products) ? data.products : []
 
-    return products
+    const mapped = products
       .filter(item => item.product_name && item.nutriments?.['energy-kcal_100g'] !== undefined)
       .slice(0, 6)
       .map((item, idx) => ({
@@ -48,6 +67,8 @@ export async function searchOpenFoodFacts(query: string): Promise<OpenFoodProduc
         carbsPer100g: Math.max(0, Math.round(Number(item.nutriments?.carbohydrates_100g ?? 0) * 10) / 10),
         fatsPer100g: Math.max(0, Math.round(Number(item.nutriments?.fat_100g ?? 0) * 10) / 10),
       }))
+    searchCache.set(cacheKey, mapped)
+    return mapped
   } finally {
     window.clearTimeout(timeout)
   }
